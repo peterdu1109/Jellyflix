@@ -63,4 +63,7 @@
     <string name="no_server_plugins">Informations sur les plugins serveur indisponibles (droits administrateur requis).</string>
     <string name="settings_accent_none">Par défaut du thème</string>
     <string name="add_account">Ajouter un compte</string>
+    <string name="settings_server_theme">Utiliser le thème du serveur</string>
+    <string name="settings_server_theme_desc">Les couleurs viennent de votre serveur Jellyfin (thème web et CSS personnalisé). Désactivez pour choisir les vôtres.</string>
+    <string name="settings_server_theme_none">Ce serveur ne définit pas de thème : votre thème est utilisé.</string>
 </resources>

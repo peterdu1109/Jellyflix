@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import dev.jellyflix.data.AppSettings
@@ -40,27 +41,32 @@ fun palette(id: String) = Palettes.firstOrNull { it.id == id } ?: Palettes.first
 
 val LocalIsTv = staticCompositionLocalOf { false }
 
-private fun scheme(p: Palette, dark: Boolean, amoled: Boolean, accent: Color?): ColorScheme {
+private fun scheme(p: Palette, dark: Boolean, amoled: Boolean, accent: Color?, serverBackground: Color? = null): ColorScheme {
     val primary = accent ?: p.primary
     val onPrimary = if (primary.luminance() > 0.5f) Color.Black else Color.White
+    // Server background applies to matching mode only (a light CSS background must not paint the dark scheme).
+    val bgDark = serverBackground?.takeIf { dark && it.luminance() < 0.5f } ?: p.darkBg
+    val surfaceDark = serverBackground?.takeIf { dark && it.luminance() < 0.5f }?.let { lerp(it, Color.White, 0.08f) } ?: p.darkSurface
+    val bgLight = serverBackground?.takeIf { !dark && it.luminance() >= 0.5f } ?: p.lightBg
     return if (dark) darkColorScheme(
         primary = primary, onPrimary = onPrimary,
         secondary = accent?.let { p.secondary } ?: p.secondary,
-        background = if (amoled) Color.Black else p.darkBg,
-        surface = if (amoled) Color.Black else p.darkBg,
-        surfaceVariant = if (amoled) Color(0xFF111111) else p.darkSurface,
-        surfaceContainer = if (amoled) Color(0xFF0B0B0B) else p.darkSurface,
-        surfaceContainerHigh = if (amoled) Color(0xFF151515) else p.darkSurface,
+        background = if (amoled) Color.Black else bgDark,
+        surface = if (amoled) Color.Black else bgDark,
+        surfaceVariant = if (amoled) Color(0xFF111111) else surfaceDark,
+        surfaceContainer = if (amoled) Color(0xFF0B0B0B) else surfaceDark,
+        surfaceContainerHigh = if (amoled) Color(0xFF151515) else surfaceDark,
         onBackground = Color(0xFFF2EEF9), onSurface = Color(0xFFF2EEF9), onSurfaceVariant = Color(0xFFB9B2C9),
     ) else lightColorScheme(
         primary = primary, onPrimary = onPrimary, secondary = p.secondary,
-        background = p.lightBg, surface = p.lightBg,
+        background = bgLight, surface = bgLight,
     )
 }
 
 @Composable
 fun JellyflixTheme(settings: AppSettings, content: @Composable () -> Unit) {
-    val dark = when (settings.themeMode) {
+    val server = settings.serverTheme.takeIf { settings.useServerTheme }
+    val dark = server?.dark ?: when (settings.themeMode) {
         ThemeMode.System -> isSystemInDarkTheme()
         ThemeMode.Light -> false
         ThemeMode.Dark -> true
@@ -68,6 +74,10 @@ fun JellyflixTheme(settings: AppSettings, content: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val colors = if (settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-    } else scheme(palette(settings.paletteId), dark, settings.amoled && dark, settings.customAccent?.let { Color(it) })
+    } else scheme(
+        palette(settings.paletteId), dark, settings.amoled && dark,
+        accent = (server?.accent ?: settings.customAccent)?.let { Color(it) },
+        serverBackground = server?.background?.let { Color(it) },
+    )
     MaterialTheme(colorScheme = colors, typography = MaterialTheme.typography, content = content)
 }

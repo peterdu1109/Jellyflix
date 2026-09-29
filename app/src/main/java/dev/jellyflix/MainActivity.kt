@@ -38,7 +38,13 @@ class MainActivity : ComponentActivity() {
                             AuthState.Loading -> LoadingView()
                             AuthState.SignedOut -> LoginScreen()
                             // Keyed on the account so all screen state resets when switching users.
-                            is AuthState.SignedIn -> androidx.compose.runtime.key(a.session.account.key) { JellyflixNav(settings, container.plugins) }
+                            is AuthState.SignedIn -> androidx.compose.runtime.key(a.session.account.key) {
+                                // Re-read the server theme for every account/session so admin changes show up on next launch.
+                                androidx.compose.runtime.LaunchedEffect(a.session.account.key) {
+                                    container.serverTheme.sync(container.settings)
+                                }
+                                JellyflixNav(settings, container.plugins)
+                            }
                         }
                     }
                 }

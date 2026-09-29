@@ -57,6 +57,16 @@ fun SettingsScreen(settings: AppSettings) {
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Header(R.string.settings_appearance) }
         item {
+            SwitchRow(stringResource(R.string.settings_server_theme), settings.useServerTheme) { v ->
+                update { it.useServerTheme(v) }
+                if (v) scope.launch { c.serverTheme.sync(c.settings) }
+            }
+            Text(
+                stringResource(if (settings.serverTheme.accent != null || settings.serverTheme.background != null) R.string.settings_server_theme_desc else R.string.settings_server_theme_none),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
             Label(R.string.settings_theme_mode)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ThemeMode.entries.forEach { m ->

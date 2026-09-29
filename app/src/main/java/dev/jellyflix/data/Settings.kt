@@ -37,6 +37,9 @@ data class AppSettings(
     val customAccent: Int? = null,
     val quality: QualityCap = QualityCap.Auto,
     val disabledPlugins: Set<String> = emptySet(),
+    /** Follow the theme defined by the Jellyfin server (web theme + branding CSS). */
+    val useServerTheme: Boolean = true,
+    val serverTheme: ServerTheme = ServerTheme(),
 )
 
 class SettingsRepository(private val context: Context) {
@@ -52,6 +55,10 @@ class SettingsRepository(private val context: Context) {
         val disabledPlugins = stringSetPreferencesKey("disabled_plugins")
         val accounts = stringPreferencesKey("accounts")
         val current = stringPreferencesKey("current_account")
+        val useServerTheme = booleanPreferencesKey("use_server_theme")
+        val serverAccent = intPreferencesKey("server_accent")
+        val serverBg = intPreferencesKey("server_bg")
+        val serverDark = booleanPreferencesKey("server_dark")
     }
 
     val settings: Flow<AppSettings> = context.store.data.map { p ->
@@ -63,6 +70,8 @@ class SettingsRepository(private val context: Context) {
             customAccent = p[K.accent],
             quality = p[K.quality]?.let { runCatching { QualityCap.valueOf(it) }.getOrNull() } ?: QualityCap.Auto,
             disabledPlugins = p[K.disabledPlugins] ?: emptySet(),
+            useServerTheme = p[K.useServerTheme] ?: true,
+            serverTheme = ServerTheme(p[K.serverAccent], p[K.serverBg], p[K.serverDark]),
         )
     }
 
@@ -76,6 +85,12 @@ class SettingsRepository(private val context: Context) {
         fun accent(v: Int?) { if (v == null) p.remove(K.accent) else p[K.accent] = v }
         fun quality(v: QualityCap) { p[K.quality] = v.name }
         fun disabledPlugins(v: Set<String>) { p[K.disabledPlugins] = v }
+        fun useServerTheme(v: Boolean) { p[K.useServerTheme] = v }
+        fun serverTheme(t: ServerTheme) {
+            t.accent?.let { p[K.serverAccent] = it } ?: p.remove(K.serverAccent)
+            t.background?.let { p[K.serverBg] = it } ?: p.remove(K.serverBg)
+            t.dark?.let { p[K.serverDark] = it } ?: p.remove(K.serverDark)
+        }
     }
 
     val accounts: Flow<List<Account>> = context.store.data.map { p ->

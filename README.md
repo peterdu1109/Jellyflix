@@ -62,6 +62,8 @@ Réglages → Apparence :
 | **Rose** | rose / mauve |
 | **Mono** | gris |
 
+**Thème du serveur** : par défaut, Jellyflix reprend le thème de votre serveur Jellyfin — le thème web choisi par l'utilisateur (dark, light, blueradiance, purplehaze, wmc, appletv) et les couleurs du **CSS personnalisé** de l'administrateur (variables comme `--accent` ou `--background`, `@import` compris). Désactivable dans Réglages → Apparence. Le CSS complet n'est pas interprété : seules les couleurs d'accent et de fond sont reprises.
+
 En plus : mode clair / sombre / système, **couleurs dynamiques** (Material You), **noir pur AMOLED**, **accent personnalisé**.
 
 ## 🧩 Plugins
