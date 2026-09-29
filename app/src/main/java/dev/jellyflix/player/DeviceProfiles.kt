@@ -17,7 +17,8 @@ object DeviceProfiles {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { !it.isEncoder && it.supportedTypes.any { t -> t.equals(mime, ignoreCase = true) } }
     }.getOrDefault(false)
 
-    fun build(maxBitrate: Int?): DeviceProfile {
+    /** [burnInSubtitles]: every subtitle is rendered into the video by the server (needed for transcoded streams). */
+    fun build(maxBitrate: Int?, burnInSubtitles: Boolean = false): DeviceProfile {
         val video = buildList {
             add("h264")
             if (hasDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)) { add("hevc"); add("h265") }
@@ -52,8 +53,12 @@ object DeviceProfiles {
             ),
             containerProfiles = emptyList(),
             codecProfiles = emptyList(),
-            subtitleProfiles = textSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.EXTERNAL) } +
-                imageSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) },
+            subtitleProfiles = if (burnInSubtitles) {
+                (textSubs + imageSubs).map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) }
+            } else {
+                textSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.EXTERNAL) } +
+                    imageSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) }
+            },
         )
     }
 }

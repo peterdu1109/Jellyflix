@@ -102,13 +102,13 @@ class PlayerViewModel(
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 // A direct play failure (unsupported codec…) falls back to server transcoding once.
-                if (_ui.value.playMethod != PlayMethod.TRANSCODE && !forcedTranscode) {
+                if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY && !forcedTranscode) {
                     forcedTranscode = true
-                    reload(player.currentPosition, _ui.value.audioIndex, _ui.value.subtitleIndex)
+                    reload(positionMs(), _ui.value.audioIndex, _ui.value.subtitleIndex)
                 } else _ui.update { it.copy(loading = false, error = error.message ?: error.errorCodeName) }
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) _ui.update { it.copy(loading = false) }
+                if (state == Player.STATE_READY) { resolveStartOffset(); _ui.update { it.copy(loading = false) } }
                 if (state == Player.STATE_ENDED) onEnded()
             }
             override fun onTracksChanged(tracks: Tracks) { /* selection is driven by the user; nothing to sync */ }
@@ -120,11 +120,16 @@ class PlayerViewModel(
     }
 
     private var forcedTranscode = false
+    /** Media position (ms) at which the current server stream's own timeline starts; 0 for absolute timelines. */
+    private var streamOffsetMs = 0L
+    private var pendingStartMs: Long? = null
+    private var runtimeMs = 0L
 
     private suspend fun start() {
         runCatching {
             val item = container.repository.item(itemId)
             _ui.update { it.copy(item = item) }
+            runtimeMs = (item.runTimeTicks ?: 0L) / 10_000
             val resumeMs = (item.userData?.playbackPositionTicks ?: 0L) / 10_000
             // Restart from the beginning when almost finished.
             val startMs = if (resumeMs > 0 && (item.runTimeTicks ?: Long.MAX_VALUE) / 10_000 - resumeMs < 30_000) 0 else resumeMs
@@ -141,50 +146,64 @@ class PlayerViewModel(
         }
     }
 
-    private suspend fun load(startMs: Long, audioIndex: Int?, subtitleIndex: Int?, first: Boolean) {
-        _ui.update { it.copy(loading = true, error = null) }
-        val forceTranscode = forcedTranscode || (audioIndex != null && _ui.value.playMethod == PlayMethod.TRANSCODE)
-        val info = api.mediaInfoApi.getPostedPlaybackInfo(
+    private suspend fun fetchInfo(startMs: Long, audioIndex: Int?, subtitleIndex: Int?, burnIn: Boolean) =
+        api.mediaInfoApi.getPostedPlaybackInfo(
             itemId = itemId,
             data = PlaybackInfoDto(
                 userId = session.userId,
                 startTimeTicks = startMs * 10_000,
                 audioStreamIndex = audioIndex, subtitleStreamIndex = subtitleIndex,
                 maxStreamingBitrate = settings.quality.bitrate,
-                deviceProfile = DeviceProfiles.build(settings.quality.bitrate),
-                enableDirectPlay = !forceTranscode && settings.quality.bitrate == null,
-                enableDirectStream = !forceTranscode && settings.quality.bitrate == null,
+                deviceProfile = DeviceProfiles.build(settings.quality.bitrate, burnInSubtitles = burnIn),
+                enableDirectPlay = !forcedTranscode && settings.quality.bitrate == null,
+                enableDirectStream = !forcedTranscode && settings.quality.bitrate == null,
                 enableTranscoding = true, autoOpenLiveStream = true,
             ),
         ).content
-        val src = info.mediaSources.firstOrNull() ?: error(info.errorCode?.name ?: "No playable source")
+
+    private fun methodOf(src: MediaSourceInfo): PlayMethod = when {
+        src.supportsDirectPlay && !forcedTranscode -> PlayMethod.DIRECT_PLAY
+        src.transcodingUrl != null -> if (src.supportsDirectStream && !forcedTranscode) PlayMethod.DIRECT_STREAM else PlayMethod.TRANSCODE
+        else -> error("No compatible stream (transcoding unavailable)")
+    }
+
+    /**
+     * (Re)loads the stream at [startMs] (absolute position in the media). [subtitleIndex] null means "off",
+     * except on the very first load where the server's default is used.
+     * Only a real direct play exposes every track to ExoPlayer; any server-produced stream (direct stream or
+     * transcode) carries a single audio track and needs the server to switch tracks, so those go through here.
+     */
+    private suspend fun load(startMs: Long, audioIndex: Int?, subtitleIndex: Int?, first: Boolean) {
+        val wasPlaying = first || player.playWhenReady
+        _ui.update { it.copy(loading = true, error = null) }
+        val requestedSub = if (first) null else (subtitleIndex ?: -1) // -1 = explicitly off
+
+        var info = fetchInfo(startMs, audioIndex, requestedSub, burnIn = false)
+        var src = info.mediaSources.firstOrNull() ?: error(info.errorCode?.name ?: "No playable source")
+        var method = methodOf(src)
+        val wantedSub = if (first) src.defaultSubtitleStreamIndex?.takeIf { it >= 0 } else subtitleIndex
+        if (method != PlayMethod.DIRECT_PLAY && wantedSub != null) {
+            // Sidecar subtitles can't follow a server stream's timeline reliably: have the server burn them in.
+            info = fetchInfo(startMs, audioIndex, wantedSub, burnIn = true)
+            src = info.mediaSources.firstOrNull() ?: error(info.errorCode?.name ?: "No playable source")
+            method = methodOf(src)
+        }
         source = src
         playSessionId = info.playSessionId
         val base = session.account.serverUrl.trimEnd('/')
         val token = Uri.encode(session.account.token)
 
-        val method: PlayMethod
-        val url: String
-        when {
-            src.supportsDirectPlay && !forceTranscode -> {
-                method = PlayMethod.DIRECT_PLAY
-                url = "$base/Videos/$itemId/stream?static=true&mediaSourceId=${src.id}&api_key=$token" +
-                    (playSessionId?.let { "&playSessionId=$it" } ?: "")
-            }
-            src.transcodingUrl != null -> {
-                method = if (src.supportsDirectStream && !forceTranscode) PlayMethod.DIRECT_STREAM else PlayMethod.TRANSCODE
-                url = base + src.transcodingUrl
-            }
-            else -> error("No compatible stream (transcoding unavailable)")
-        }
+        val url = if (method == PlayMethod.DIRECT_PLAY)
+            "$base/Videos/$itemId/stream?static=true&mediaSourceId=${src.id}&api_key=$token" + (playSessionId?.let { "&playSessionId=$it" } ?: "")
+        else base + src.transcodingUrl
 
         val streams = src.mediaStreams.orEmpty()
         val audio = streams.filter { it.type == MediaStreamType.AUDIO }
         val subs = streams.filter { it.type == MediaStreamType.SUBTITLE }
         val chosenAudio = audioIndex ?: src.defaultAudioStreamIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
-        val chosenSub = if (first) src.defaultSubtitleStreamIndex?.takeIf { it >= 0 } else subtitleIndex
+        val chosenSub = wantedSub
 
-        val externalSubs = subs.filter { it.deliveryMethod == SubtitleDeliveryMethod.EXTERNAL && it.deliveryUrl != null && method != PlayMethod.TRANSCODE }
+        val externalSubs = (if (method != PlayMethod.DIRECT_PLAY) emptyList() else subs.filter { it.deliveryMethod == SubtitleDeliveryMethod.EXTERNAL && it.deliveryUrl != null })
             .map { s ->
                 val mime = when {
                     s.deliveryUrl!!.contains(".vtt", true) || s.codec.equals("webvtt", true) -> MimeTypes.TEXT_VTT
@@ -204,21 +223,53 @@ class PlayerViewModel(
             )
         }
 
+        streamOffsetMs = 0
+        pendingStartMs = null
         val mediaItem = MediaItem.Builder().setUri(url).setMediaId(itemId.toString()).setSubtitleConfigurations(externalSubs).build()
-        // For transcoded HLS the server already applied the start offset; for direct play we seek.
-        player.setMediaItem(mediaItem, if (method == PlayMethod.TRANSCODE) C.TIME_UNSET else startMs.coerceAtLeast(0))
+        if (method == PlayMethod.DIRECT_PLAY) {
+            player.setMediaItem(mediaItem, startMs.coerceAtLeast(0))
+        } else {
+            // Whether the HLS timeline is absolute or starts at the requested offset is settled once the duration is known.
+            player.setMediaItem(mediaItem)
+            if (startMs > 0) pendingStartMs = startMs
+        }
         player.prepare()
-        player.playWhenReady = true
-        applyClientTrackSelection(chosenAudio, chosenSub)
+        player.playWhenReady = wasPlaying
+        if (method == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(chosenAudio, chosenSub)
         reportStart()
     }
+
+    /**
+     * Server streams may either expose the full timeline (seek to the start position) or begin at the requested
+     * offset (position 0 == startMs). Compare the reported duration with the known runtime to tell which.
+     */
+    private fun resolveStartOffset() {
+        val start = pendingStartMs ?: return
+        pendingStartMs = null
+        val dur = player.duration
+        val full = runtimeMs
+        if (dur == C.TIME_UNSET || full <= 0) { player.seekTo(start); return }
+        if (kotlin.math.abs(dur - full) <= maxOf(15_000L, full / 50)) player.seekTo(start) else streamOffsetMs = start
+    }
+
+    /** Absolute position in the media, regardless of how the stream's own timeline starts. */
+    fun positionMs(): Long = streamOffsetMs + player.currentPosition
+    fun durationMs(): Long = if (runtimeMs > 0) runtimeMs else player.duration.coerceAtLeast(0)
+
+    fun seekToMs(ms: Long) {
+        val target = ms.coerceIn(0, durationMs().takeIf { it > 0 } ?: Long.MAX_VALUE)
+        val rel = target - streamOffsetMs
+        if (rel >= 0) player.seekTo(rel) else reload(target, _ui.value.audioIndex, _ui.value.subtitleIndex)
+    }
+
+    fun seekByMs(delta: Long) = seekToMs(positionMs() + delta)
 
     private fun MediaStream.label(): String =
         displayTitle ?: listOfNotNull(language?.uppercase(), codec?.uppercase(), title).joinToString(" · ").ifBlank { "#$index" }
 
     /** Direct play exposes every track to ExoPlayer, so switching is instant and needs no server round trip. */
     private fun applyClientTrackSelection(audioIndex: Int?, subIndex: Int?) {
-        if (_ui.value.playMethod == PlayMethod.TRANSCODE) return
+        if (_ui.value.playMethod != PlayMethod.DIRECT_PLAY) return
         val streams = source?.mediaStreams.orEmpty()
         val params = player.trackSelectionParameters.buildUpon()
         val audioOrdinal = streams.filter { it.type == MediaStreamType.AUDIO }.indexOfFirst { it.index == audioIndex }
@@ -253,24 +304,28 @@ class PlayerViewModel(
         listener.onTracksChanged(player.currentTracks)
     }
 
+    /** Direct play: instant client-side switch. Any server stream: reload at the current position with the new track. */
     fun selectAudio(index: Int) {
+        val sub = _ui.value.subtitleIndex
         _ui.update { it.copy(audioIndex = index) }
-        if (_ui.value.playMethod == PlayMethod.TRANSCODE) reload(player.currentPosition, index, _ui.value.subtitleIndex)
-        else applyClientTrackSelection(index, _ui.value.subtitleIndex)
+        if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(index, sub)
+        else reload(positionMs(), index, sub)
     }
 
     fun selectSubtitle(index: Int?) {
+        val audio = _ui.value.audioIndex
         val stream = source?.mediaStreams.orEmpty().firstOrNull { it.index == index }
         _ui.update { it.copy(subtitleIndex = index) }
+        // Image subtitles (PGS, VobSub) can't be shown by the player: the server must burn them in.
         val needsBurnIn = index != null && stream != null && stream.deliveryMethod != SubtitleDeliveryMethod.EXTERNAL && stream.deliveryMethod != SubtitleDeliveryMethod.EMBED
-        if (_ui.value.playMethod == PlayMethod.TRANSCODE || needsBurnIn) reload(player.currentPosition, _ui.value.audioIndex, index)
-        else applyClientTrackSelection(_ui.value.audioIndex, index)
+        if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY && !needsBurnIn) applyClientTrackSelection(audio, index)
+        else reload(positionMs(), audio, index)
     }
 
     fun changeQuality(cap: dev.jellyflix.data.QualityCap) {
         settings = settings.copy(quality = cap)
         forcedTranscode = cap.bitrate != null
-        reload(player.currentPosition, _ui.value.audioIndex, _ui.value.subtitleIndex)
+        reload(positionMs(), _ui.value.audioIndex, _ui.value.subtitleIndex)
     }
 
     private suspend fun loadSegments() {
@@ -280,7 +335,7 @@ class PlayerViewModel(
     }
 
     fun skipActiveSegment() {
-        _ui.value.activeSegment?.let { player.seekTo(it.endMs) }
+        _ui.value.activeSegment?.let { seekToMs(it.endMs) }
     }
 
     private fun startLoop() {
@@ -289,7 +344,7 @@ class PlayerViewModel(
             var sinceReport = 0
             while (isActive) {
                 delay(500)
-                val pos = player.currentPosition
+                val pos = positionMs()
                 val seg = segments.firstOrNull { it.type != MediaSegmentType.UNKNOWN && pos >= it.startMs && pos < it.endMs - 1000 }
                 if (seg != _ui.value.activeSegment) _ui.update { it.copy(activeSegment = seg) }
                 if (++sinceReport >= 20 && player.isPlaying) { sinceReport = 0; reportProgress() }
@@ -310,7 +365,7 @@ class PlayerViewModel(
         }
     }
 
-    private fun ticks() = player.currentPosition * 10_000
+    private fun ticks() = positionMs() * 10_000
 
     private suspend fun reportStart() = runCatching {
         api.playStateApi.reportPlaybackStart(PlaybackStartInfo(
