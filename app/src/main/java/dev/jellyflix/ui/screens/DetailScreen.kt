@@ -109,6 +109,7 @@ class DetailViewModel(private val repo: MediaRepository, private val id: UUID) :
                         BaseItemKind.MUSIC_ALBUM -> DetailData(item, tracks = repo.tracks(id, playlistOrder = false), similar = similar.await())
                         BaseItemKind.PLAYLIST -> if (item.mediaType == org.jellyfin.sdk.model.api.MediaType.AUDIO) DetailData(item, tracks = repo.tracks(id, playlistOrder = true))
                             else DetailData(item, episodes = repo.children(id))
+                        BaseItemKind.PERSON -> DetailData(item, albums = repo.filmography(id))
                         BaseItemKind.MUSIC_ARTIST -> DetailData(item, albums = repo.albumsOfArtist(id))
                         BaseItemKind.AUDIO -> DetailData(item, tracks = listOf(item))
                         BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO -> DetailData(item, similar = similar.await(), playTarget = item)
@@ -170,7 +171,15 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                     }
                     itemsIndexed(d.tracks, key = { _, t -> t.id }) { i, t -> TrackRow(i, t) { onPlayTracks(d.tracks, i, false) } }
                 }
-                if (d.albums.isNotEmpty()) item { ItemRow(stringResource(R.string.albums), d.albums, repo, onOpen) }
+                if (d.albums.isNotEmpty()) item { ItemRow(stringResource(if (item.type == BaseItemKind.PERSON) R.string.filmography else R.string.albums), d.albums, repo, onOpen) }
+                val cast = item.people.orEmpty().filter { it.id != null && it.type in setOf(org.jellyfin.sdk.model.api.PersonKind.ACTOR, org.jellyfin.sdk.model.api.PersonKind.DIRECTOR) }.take(20)
+                if (cast.isNotEmpty() && item.type != BaseItemKind.PERSON) item {
+                    // People become minimal items so they reuse the same card (and open the person page).
+                    ItemRow(stringResource(R.string.cast), cast.map { p ->
+                        BaseItemDto(id = p.id, type = BaseItemKind.PERSON, name = p.name, productionYear = null,
+                            imageTags = p.primaryImageTag?.let { mapOf(ImageType.PRIMARY to it) })
+                    }, repo, onOpen)
+                }
                 item {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         MetaLine(item)

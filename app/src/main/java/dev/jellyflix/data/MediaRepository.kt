@@ -118,6 +118,13 @@ class MediaRepository(private val sessions: SessionManager) {
         return Page(r.items, r.totalRecordCount)
     }
 
+    /** Everything a person (actor, director…) appears in. */
+    suspend fun filmography(personId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, personIds = listOf(personId), recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES),
+        sortBy = listOf(ItemSortBy.PREMIERE_DATE), sortOrder = listOf(SortOrder.DESCENDING),
+    ).content.items
+
     suspend fun children(parentId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
         userId = uid, parentId = parentId, sortBy = listOf(ItemSortBy.SORT_NAME), fields = CARD_FIELDS,
     ).content.items

@@ -98,4 +98,6 @@
     <string name="queue">Up next</string>
     <string name="channels">Channels</string>
     <string name="recordings">Recordings</string>
+    <string name="cast">Cast &amp; crew</string>
+    <string name="filmography">Filmography</string>
 </resources>

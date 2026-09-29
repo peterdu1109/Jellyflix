@@ -97,4 +97,6 @@
     <string name="queue">À suivre</string>
     <string name="channels">Chaînes</string>
     <string name="recordings">Enregistrements</string>
+    <string name="cast">Distribution</string>
+    <string name="filmography">Filmographie</string>
 </resources>
