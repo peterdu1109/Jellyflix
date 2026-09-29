@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Jellyflix</string>
+    <string name="app_name" translatable="false">Jellyflix</string>
     <string name="nav_home">Home</string>
     <string name="nav_library">Library</string>
     <string name="nav_search">Search</string>

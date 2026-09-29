@@ -49,11 +49,25 @@ class ServerThemeRepository(private val sessions: SessionManager) {
         settings.update { it.serverTheme(theme) }
     }
 
+    /** Reads at most [max] bytes (InputStream.readNBytes needs API 33, the app supports 26+). */
+    private fun readCapped(input: java.io.InputStream, max: Int): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8 * 1024)
+        while (out.size() < max) {
+            val n = input.read(buf, 0, minOf(buf.size, max - out.size()))
+            if (n < 0) break
+            out.write(buf, 0, n)
+        }
+        return out.toString(Charsets.UTF_8.name())
+    }
+
+    private companion object { const val MAX_IMPORT_BYTES = 512 * 1024 }
+
     private suspend fun download(url: String): String = withContext(Dispatchers.IO) {
         runCatching {
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 5_000; c.readTimeout = 5_000
-            try { c.inputStream.use { it.readNBytes(512 * 1024).decodeToString() } } finally { c.disconnect() }
+            try { c.inputStream.use { readCapped(it, MAX_IMPORT_BYTES) } } finally { c.disconnect() }
         }.getOrDefault("")
     }
 }
