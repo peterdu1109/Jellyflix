@@ -1,5 +1,6 @@
 package dev.jellyflix.ui
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,8 @@ import dev.jellyflix.ui.screens.DetailScreen
 import dev.jellyflix.ui.screens.DownloadsScreen
 import dev.jellyflix.ui.screens.HomeScreen
 import dev.jellyflix.ui.screens.LibrariesScreen
+import dev.jellyflix.ui.screens.MiniPlayer
+import dev.jellyflix.ui.screens.NowPlayingScreen
 import dev.jellyflix.ui.screens.LibraryScreen
 import dev.jellyflix.ui.screens.PlayerScreen
 import dev.jellyflix.ui.screens.SearchScreen
@@ -79,7 +82,15 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
         BaseItemKind.COLLECTION_FOLDER, BaseItemKind.USER_VIEW, BaseItemKind.FOLDER -> nav.navigate(Routes.library(item.id))
         else -> nav.navigate(Routes.detail(item.id))
     }
-    fun play(item: BaseItemDto) = nav.navigate(Routes.player(item.id))
+    val music = rememberContainer().music
+    fun play(item: BaseItemDto) {
+        // Songs go to the background music player; everything else opens the video player.
+        if (item.mediaType == org.jellyfin.sdk.model.api.MediaType.AUDIO || item.type == BaseItemKind.AUDIO) { music.play(listOf(item)); nav.navigate("nowplaying") }
+        else nav.navigate(Routes.player(item.id))
+    }
+    fun playTracks(tracks: List<BaseItemDto>, index: Int, shuffle: Boolean) {
+        music.play(tracks, index); music.setShuffle(shuffle); nav.navigate("nowplaying")
+    }
 
     fun go(tab: Tab) = nav.navigate(tab.route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -90,12 +101,13 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
         NavHost(nav, startDestination = "home", modifier = mod) {
             composable("home") { HomeScreen(settings, plugins, ::open, ::play, ::open, onOpenDownloads = { go(Tabs.first { it.route == "downloads" }) }) }
             composable("downloads") { DownloadsScreen(::play) }
+            composable("nowplaying") { NowPlayingScreen(onBack = { nav.popBackStack() }) }
             composable("libraries") { LibrariesScreen(::open) }
             composable("search") { SearchScreen(::open) }
             composable("settings") { SettingsScreen(settings) }
             composable(Routes.LIBRARY, UUID_ARG) { LibraryScreen(UUID.fromString(it.arguments!!.getString("id")), ::open) }
             composable(Routes.DETAIL, UUID_ARG) {
-                DetailScreen(UUID.fromString(it.arguments!!.getString("id")), nav::popBackStack, ::open, ::play)
+                DetailScreen(UUID.fromString(it.arguments!!.getString("id")), nav::popBackStack, ::open, ::play, ::playTracks)
             }
             composable(Routes.PLAYER, UUID_ARG) {
                 PlayerScreen(
@@ -111,12 +123,18 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
             if (showBars) NavigationRail {
                 Tabs.forEach { t -> NavigationRailItem(route == t.route, { go(t) }, { Icon(t.icon, null) }, label = { Text(stringResource(t.label)) }) }
             }
-            content(Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                content(Modifier.weight(1f))
+                if (route != "nowplaying" && route?.startsWith("player/") != true) MiniPlayer { nav.navigate("nowplaying") }
+            }
         }
     } else {
         Scaffold(bottomBar = {
-            if (showBars) NavigationBar {
-                Tabs.forEach { t -> NavigationBarItem(route == t.route, { go(t) }, { Icon(t.icon, null) }, label = { Text(stringResource(t.label)) }) }
+            Column {
+                if (route != "nowplaying" && route?.startsWith("player/") != true) MiniPlayer { nav.navigate("nowplaying") }
+                if (showBars) NavigationBar {
+                    Tabs.forEach { t -> NavigationBarItem(route == t.route, { go(t) }, { Icon(t.icon, null) }, label = { Text(stringResource(t.label)) }) }
+                }
             }
         }) { pad -> content(Modifier.padding(pad)) }
     }

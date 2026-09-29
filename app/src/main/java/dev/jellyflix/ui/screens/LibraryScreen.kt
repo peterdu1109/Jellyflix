@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.jellyflix.R
+import androidx.compose.ui.res.stringResource
 import dev.jellyflix.data.MediaRepository
 import dev.jellyflix.ui.appViewModel
 import dev.jellyflix.ui.components.ItemRow
@@ -70,11 +72,15 @@ class LibrariesViewModel(private val repo: MediaRepository) : ViewModel() {
     }
 }
 
+enum class LibraryKind { Default, Albums, Artists, Songs }
+
 data class GridState(
     val items: List<BaseItemDto> = emptyList(),
     val total: Int = 0,
     val loading: Boolean = true,
     val error: String? = null,
+    val kind: LibraryKind = LibraryKind.Default,
+    val isMusic: Boolean = false,
     val sort: ItemSortBy = ItemSortBy.SORT_NAME,
     val order: SortOrder = SortOrder.ASCENDING,
 )
@@ -90,7 +96,9 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
 
     init {
         viewModelScope.launch {
-            types = runCatching { typesFor(repo.item(parentId).collectionType) }.getOrNull()
+            val collection = runCatching { repo.item(parentId).collectionType }.getOrNull()
+            types = typesFor(collection)
+            _state.update { it.copy(isMusic = collection == CollectionType.MUSIC, kind = if (collection == CollectionType.MUSIC) LibraryKind.Albums else LibraryKind.Default) }
             reload()
         }
     }
@@ -105,6 +113,8 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
         else -> null
     }
 
+    fun setKind(kind: LibraryKind) { _state.update { it.copy(kind = kind) }; reload() }
+
     fun setSort(sort: ItemSortBy, order: SortOrder) { _state.update { it.copy(sort = sort, order = order) }; reload() }
 
     private fun reload() { generation++; _state.update { it.copy(items = emptyList(), total = 0) }; loadMore() }
@@ -115,7 +125,14 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
         val gen = generation
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { repo.browse(parentId, s.sort, s.order, s.items.size, types = types) }
+            runCatching {
+                when (s.kind) {
+                    LibraryKind.Artists -> repo.browseArtists(parentId, s.items.size)
+                    LibraryKind.Songs -> repo.browse(parentId, s.sort, s.order, s.items.size, types = listOf(BaseItemKind.AUDIO))
+                    LibraryKind.Albums -> repo.browse(parentId, s.sort, s.order, s.items.size, types = listOf(BaseItemKind.MUSIC_ALBUM))
+                    LibraryKind.Default -> repo.browse(parentId, s.sort, s.order, s.items.size, types = types)
+                }
+            }
                 .onSuccess { page -> if (gen == generation) _state.update { it.copy(items = it.items + page.items, total = page.total, loading = false) } }
                 .onFailure { e -> if (gen == generation) _state.update { it.copy(loading = false, error = e.message) } }
         }
@@ -145,6 +162,14 @@ fun LibraryScreen(parentId: UUID, onOpen: (BaseItemDto) -> Unit) {
             contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
+            if (state.isMusic) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(LibraryKind.entries.filter { it != LibraryKind.Default }.size) { i ->
+                        val k = LibraryKind.entries.filter { it != LibraryKind.Default }[i]
+                        FilterChip(selected = state.kind == k, onClick = { vm.setKind(k) }, label = { Text(when (k) { LibraryKind.Albums -> stringResource(R.string.albums); LibraryKind.Artists -> stringResource(R.string.artists); else -> stringResource(R.string.songs) }) })
+                    }
+                }
+            }
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sorts.size) { i ->

@@ -88,4 +88,11 @@
     <string name="settings_wifi_only">Télécharger uniquement en Wi‑Fi</string>
     <string name="offline_hint">Vous semblez hors-ligne. Vos téléchargements restent disponibles.</string>
     <string name="open_downloads">Ouvrir les téléchargements</string>
+    <string name="play_all">Lire</string>
+    <string name="shuffle">Aléatoire</string>
+    <string name="albums">Albums</string>
+    <string name="artists">Artistes</string>
+    <string name="songs">Titres</string>
+    <string name="now_playing">En cours de lecture</string>
+    <string name="queue">À suivre</string>
 </resources>

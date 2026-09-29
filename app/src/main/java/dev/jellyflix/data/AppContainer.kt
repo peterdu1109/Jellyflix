@@ -29,6 +29,7 @@ class AppContainer(context: Context) {
 
     val session = SessionManager(jellyfin, settings, appScope)
     val repository = MediaRepository(session)
+    val music = dev.jellyflix.music.MusicController(context.applicationContext, session, repository)
     val downloads = dev.jellyflix.download.DownloadRepository(context.applicationContext, session, settings, appScope)
     val serverTheme = ServerThemeRepository(session)
 }

@@ -9,6 +9,7 @@ import org.jellyfin.sdk.api.client.extensions.tvShowsApi
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.api.client.extensions.userViewsApi
 import org.jellyfin.sdk.api.client.extensions.userApi
+import org.jellyfin.sdk.api.client.extensions.artistsApi
 import org.jellyfin.sdk.api.client.extensions.liveTvApi
 import org.jellyfin.sdk.api.client.extensions.displayPreferencesApi
 import org.jellyfin.sdk.api.client.extensions.pluginsApi
@@ -91,6 +92,23 @@ class MediaRepository(private val sessions: SessionManager) {
             sortBy = listOf(sortBy), sortOrder = listOf(order), fields = CARD_FIELDS,
             includeItemTypes = types ?: listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES, BaseItemKind.BOX_SET, BaseItemKind.MUSIC_ALBUM),
         ).content
+        return Page(r.items, r.totalRecordCount)
+    }
+
+    /** Album tracks in disc/track order, or a playlist in its own order. */
+    suspend fun tracks(parentId: UUID, playlistOrder: Boolean): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, parentId = parentId, recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.AUDIO),
+        sortBy = if (playlistOrder) null else listOf(ItemSortBy.PARENT_INDEX_NUMBER, ItemSortBy.INDEX_NUMBER, ItemSortBy.SORT_NAME),
+    ).content.items
+
+    suspend fun albumsOfArtist(artistId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, albumArtistIds = listOf(artistId), recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.MUSIC_ALBUM), sortBy = listOf(ItemSortBy.PRODUCTION_YEAR, ItemSortBy.SORT_NAME), sortOrder = listOf(SortOrder.DESCENDING),
+    ).content.items
+
+    suspend fun browseArtists(parentId: UUID?, start: Int, limit: Int = 60): Page {
+        val r = api.artistsApi.getAlbumArtists(userId = uid, parentId = parentId, startIndex = start, limit = limit, fields = CARD_FIELDS, sortBy = listOf(ItemSortBy.SORT_NAME)).content
         return Page(r.items, r.totalRecordCount)
     }
 

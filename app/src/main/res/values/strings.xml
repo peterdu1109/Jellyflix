@@ -89,4 +89,11 @@
     <string name="settings_wifi_only">Download on Wi‑Fi only</string>
     <string name="offline_hint">You seem to be offline. Your downloads are still available.</string>
     <string name="open_downloads">Open downloads</string>
+    <string name="play_all">Play</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="albums">Albums</string>
+    <string name="artists">Artists</string>
+    <string name="songs">Songs</string>
+    <string name="now_playing">Now playing</string>
+    <string name="queue">Up next</string>
 </resources>

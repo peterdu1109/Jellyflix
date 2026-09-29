@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -74,6 +77,8 @@ data class DetailData(
     val similar: List<BaseItemDto> = emptyList(),
     /** Episode/movie to start when pressing Play (next unwatched episode for a series). */
     val playTarget: BaseItemDto? = null,
+    val tracks: List<BaseItemDto> = emptyList(),
+    val albums: List<BaseItemDto> = emptyList(),
 )
 
 class DetailViewModel(private val repo: MediaRepository, private val id: UUID) : ViewModel() {
@@ -101,6 +106,11 @@ class DetailViewModel(private val repo: MediaRepository, private val id: UUID) :
                             val eps = repo.episodes(item.seriesId ?: id, id)
                             DetailData(item, episodes = eps, playTarget = eps.firstOrNull { it.userData?.played != true } ?: eps.firstOrNull())
                         }
+                        BaseItemKind.MUSIC_ALBUM -> DetailData(item, tracks = repo.tracks(id, playlistOrder = false), similar = similar.await())
+                        BaseItemKind.PLAYLIST -> if (item.mediaType == org.jellyfin.sdk.model.api.MediaType.AUDIO) DetailData(item, tracks = repo.tracks(id, playlistOrder = true))
+                            else DetailData(item, episodes = repo.children(id))
+                        BaseItemKind.MUSIC_ARTIST -> DetailData(item, albums = repo.albumsOfArtist(id))
+                        BaseItemKind.AUDIO -> DetailData(item, tracks = listOf(item))
                         BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO -> DetailData(item, similar = similar.await(), playTarget = item)
                         else -> DetailData(item, episodes = repo.children(id), similar = emptyList())
                     }
@@ -134,7 +144,7 @@ class DetailViewModel(private val repo: MediaRepository, private val id: UUID) :
 }
 
 @Composable
-fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit) {
+fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit, onPlayTracks: (List<BaseItemDto>, Int, Boolean) -> Unit = { _, _, _ -> }) {
     val vm = appViewModel(key = "detail-$id") { DetailViewModel(it.repository, id) }
     val repo = rememberContainer().repository
     val state by vm.state.collectAsState()
@@ -151,6 +161,16 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                         Text(item.name.orEmpty(), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.align(Alignment.BottomStart).padding(16.dp))
                     }
                 }
+                if (d.tracks.isNotEmpty()) {
+                    item {
+                        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button({ onPlayTracks(d.tracks, 0, false) }, Modifier.focusRing()) { Icon(Icons.Default.PlayArrow, null); Text(stringResource(R.string.play_all), Modifier.padding(start = 6.dp)) }
+                            androidx.compose.material3.OutlinedButton({ onPlayTracks(d.tracks, 0, true) }, Modifier.focusRing()) { Text(stringResource(R.string.shuffle)) }
+                        }
+                    }
+                    itemsIndexed(d.tracks, key = { _, t -> t.id }) { i, t -> TrackRow(i, t) { onPlayTracks(d.tracks, i, false) } }
+                }
+                if (d.albums.isNotEmpty()) item { ItemRow(stringResource(R.string.albums), d.albums, repo, onOpen) }
                 item {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         MetaLine(item)
@@ -256,5 +276,20 @@ private fun DownloadButton(item: BaseItemDto, episodes: List<BaseItemDto>) {
             active -> androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             else -> Icon(Icons.Default.Download, stringResource(if (targets.size > 1) R.string.download_season else R.string.download))
         }
+    }
+}
+
+@Composable
+private fun TrackRow(index: Int, track: BaseItemDto, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).focusRing().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${track.indexNumber ?: (index + 1)}", Modifier.width(28.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(track.name.orEmpty(), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            (track.artists?.joinToString(", ") ?: track.albumArtist)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+        }
+        formatRuntime(track.runTimeTicks)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
