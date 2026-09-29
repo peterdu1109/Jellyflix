@@ -102,9 +102,13 @@ Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis po
 Pour une signature stable (mises à jour sans désinstaller), ajoutez les secrets du dépôt `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD`. Sans eux, l'APK est signé avec la clé de debug.
 </details>
 
+## 🔒 Sécurité
+
+Les jetons de connexion sont **chiffrés** (AES-256-GCM) avec une clé stockée dans l'**Android Keystore**, qui ne quitte pas l'appareil. Les comptes enregistrés par une version précédente sont migrés automatiquement. La sauvegarde Android est désactivée.
+
 ## ⚠️ Limites actuelles
 
-Pas encore de musique, télé en direct, téléchargements hors-ligne ni Chromecast. Les jetons de connexion sont stockés dans le stockage privé de l'app, non chiffrés.
+Pas encore de musique, télé en direct, téléchargements hors-ligne ni Chromecast.
 
 ## 📄 Licence
 

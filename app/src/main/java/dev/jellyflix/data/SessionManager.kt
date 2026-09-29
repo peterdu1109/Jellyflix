@@ -40,6 +40,7 @@ class SessionManager(
 
     init {
         scope.launch {
+            runCatching { settings.migrateLegacyAccounts() }
             val key = settings.currentAccountKey.first()
             val account = settings.accounts.first().firstOrNull { it.key == key }
             _state.value = account?.let { AuthState.SignedIn(open(it)) } ?: AuthState.SignedOut

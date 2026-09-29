@@ -53,7 +53,9 @@ class SettingsRepository(private val context: Context) {
         val accent = intPreferencesKey("accent")
         val quality = stringPreferencesKey("quality")
         val disabledPlugins = stringSetPreferencesKey("disabled_plugins")
-        val accounts = stringPreferencesKey("accounts")
+        /** Legacy plaintext list (v0.1). Read once for migration, then removed. */
+        val accountsLegacy = stringPreferencesKey("accounts")
+        val accounts = stringPreferencesKey("accounts_enc")
         val current = stringPreferencesKey("current_account")
         val useServerTheme = booleanPreferencesKey("use_server_theme")
         val serverAccent = intPreferencesKey("server_accent")
@@ -93,22 +95,33 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    val accounts: Flow<List<Account>> = context.store.data.map { p ->
-        p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList()
+    private fun decode(raw: String?): List<Account>? =
+        raw?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() }
+
+    /** Accounts are stored encrypted; a legacy plaintext list is still read so upgrading users stay signed in. */
+    private fun readAccounts(p: Preferences): List<Account> =
+        decode(p[K.accounts]?.let { SecretBox.decrypt(it) }) ?: decode(p[K.accountsLegacy]) ?: emptyList()
+
+    private fun writeAccounts(p: androidx.datastore.preferences.core.MutablePreferences, list: List<Account>) {
+        p[K.accounts] = SecretBox.encrypt(json.encodeToString(list))
+        p.remove(K.accountsLegacy) // never leave tokens in clear text once migrated
     }
+
+    val accounts: Flow<List<Account>> = context.store.data.map { readAccounts(it) }
     val currentAccountKey: Flow<String?> = context.store.data.map { it[K.current] }
 
     suspend fun saveAccount(account: Account) = context.store.edit { p ->
-        val list = (p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList())
-            .filterNot { it.key == account.key } + account
-        p[K.accounts] = json.encodeToString(list)
+        writeAccounts(p, readAccounts(p).filterNot { it.key == account.key } + account)
         p[K.current] = account.key
     }
 
     suspend fun removeAccount(key: String) = context.store.edit { p ->
-        val list = (p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList())
-            .filterNot { it.key == key }
-        p[K.accounts] = json.encodeToString(list)
+        writeAccounts(p, readAccounts(p).filterNot { it.key == key })
         if (p[K.current] == key) p.remove(K.current)
+    }
+
+    /** Re-encrypts a legacy plaintext list at startup instead of waiting for the next login. */
+    suspend fun migrateLegacyAccounts() = context.store.edit { p ->
+        if (p[K.accountsLegacy] != null) writeAccounts(p, readAccounts(p))
     }
 }
