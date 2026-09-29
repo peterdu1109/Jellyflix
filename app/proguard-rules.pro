@@ -1,0 +1,4 @@
+-keep class org.jellyfin.sdk.** { *; }
+-keepattributes *Annotation*, InnerClasses
+-dontwarn org.slf4j.**
+-dontwarn org.jetbrains.annotations.**
