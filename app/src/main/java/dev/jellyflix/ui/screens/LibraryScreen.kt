@@ -36,6 +36,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemDto
+import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.CollectionType
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.SortOrder
 import java.util.UUID
@@ -55,10 +57,17 @@ class LibrariesViewModel(private val repo: MediaRepository) : ViewModel() {
     private val _state = MutableStateFlow<Load<List<BaseItemDto>>>(Load.Loading)
     val state: StateFlow<Load<List<BaseItemDto>>> = _state
     init { load() }
-    fun load() = viewModelScope.launch {
-        _state.value = Load.Loading
-        _state.value = runCatching { repo.views() }.fold({ Load.Ready(it) }, { Load.Failed(it.message) })
-    }.let { }
+    fun load() {
+        viewModelScope.launch {
+            _state.value = Load.Loading
+            _state.value = runCatching {
+                // Same order and visibility as configured on the server.
+                val layout = repo.userLayout()
+                repo.views().filter { it.id !in layout.hiddenViews }
+                    .sortedBy { v -> layout.orderedViews.indexOf(v.id).let { if (it < 0) Int.MAX_VALUE else it } }
+            }.fold({ Load.Ready(it) }, { Load.Failed(it.message) })
+        }
+    }
 }
 
 data class GridState(
@@ -76,7 +85,25 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
     val state: StateFlow<GridState> = _state
     private var generation = 0
 
-    init { reload() }
+    /** Item kinds shown for each library type, so a music library lists albums and a playlist library lists playlists. */
+    private var types: List<BaseItemKind>? = null
+
+    init {
+        viewModelScope.launch {
+            types = runCatching { typesFor(repo.item(parentId).collectionType) }.getOrNull()
+            reload()
+        }
+    }
+
+    private fun typesFor(type: CollectionType?): List<BaseItemKind>? = when (type) {
+        CollectionType.MOVIES -> listOf(BaseItemKind.MOVIE)
+        CollectionType.TVSHOWS -> listOf(BaseItemKind.SERIES)
+        CollectionType.MUSIC -> listOf(BaseItemKind.MUSIC_ALBUM)
+        CollectionType.BOXSETS -> listOf(BaseItemKind.BOX_SET)
+        CollectionType.PLAYLISTS -> listOf(BaseItemKind.PLAYLIST)
+        CollectionType.HOMEVIDEOS, CollectionType.MUSICVIDEOS -> listOf(BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO)
+        else -> null
+    }
 
     fun setSort(sort: ItemSortBy, order: SortOrder) { _state.update { it.copy(sort = sort, order = order) }; reload() }
 
@@ -88,7 +115,7 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
         val gen = generation
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { repo.browse(parentId, s.sort, s.order, s.items.size) }
+            runCatching { repo.browse(parentId, s.sort, s.order, s.items.size, types = types) }
                 .onSuccess { page -> if (gen == generation) _state.update { it.copy(items = it.items + page.items, total = page.total, loading = false) } }
                 .onFailure { e -> if (gen == generation) _state.update { it.copy(loading = false, error = e.message) } }
         }

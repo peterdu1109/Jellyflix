@@ -8,6 +8,9 @@ import org.jellyfin.sdk.api.client.extensions.playStateApi
 import org.jellyfin.sdk.api.client.extensions.tvShowsApi
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.api.client.extensions.userViewsApi
+import org.jellyfin.sdk.api.client.extensions.userApi
+import org.jellyfin.sdk.api.client.extensions.liveTvApi
+import org.jellyfin.sdk.api.client.extensions.displayPreferencesApi
 import org.jellyfin.sdk.api.client.extensions.pluginsApi
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -20,6 +23,19 @@ import java.util.UUID
 
 data class Page(val items: List<BaseItemDto>, val total: Int)
 
+/** How the server (per user) wants the client to lay things out: home sections order and library visibility. */
+data class UserLayout(
+    val homeSections: List<String>,
+    val orderedViews: List<UUID>,
+    val hiddenViews: Set<UUID>,
+    val hiddenLatest: Set<UUID>,
+) {
+    companion object {
+        /** Same defaults as the Jellyfin web client when the user never customised the home screen. */
+        val DefaultSections = listOf("smalllibrarytiles", "resume", "resumeaudio", "resumebook", "livetv", "nextup", "latestmedia", "none")
+    }
+}
+
 private val CARD_FIELDS = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO)
 
 /** All server reads/writes used by the UI. Throws on failure; ViewModels wrap calls in [runCatching]. */
@@ -29,6 +45,28 @@ class MediaRepository(private val sessions: SessionManager) {
     private val uid get() = s.userId
 
     suspend fun views(): List<BaseItemDto> = api.userViewsApi.getUserViews(userId = uid).content.items
+
+    /** Reads the user's server-side configuration; any failure falls back to the web client defaults. */
+    suspend fun userLayout(): UserLayout {
+        val config = runCatching { api.userApi.getCurrentUser().content.configuration }.getOrNull()
+        val prefs = runCatching { api.displayPreferencesApi.getDisplayPreferences("usersettings", uid, "emby").content.customPrefs }.getOrNull().orEmpty()
+        val sections = (0..9).mapNotNull { prefs["homesection$it"]?.lowercase() }.ifEmpty { UserLayout.DefaultSections }
+        return UserLayout(
+            homeSections = sections,
+            orderedViews = config?.orderedViews.orEmpty(),
+            hiddenViews = config?.myMediaExcludes.orEmpty().toSet(),
+            hiddenLatest = config?.latestItemsExcludes.orEmpty().toSet(),
+        )
+    }
+
+    /** Channels with what's on right now; empty when the server has no Live TV. */
+    suspend fun liveTvNow(): List<BaseItemDto> = api.liveTvApi.getLiveTvChannels(
+        userId = uid, limit = 20, addCurrentProgram = true, enableFavoriteSorting = true,
+    ).content.items
+
+    suspend fun resumeAudio(): List<BaseItemDto> = api.itemsApi.getResumeItems(
+        userId = uid, limit = 20, fields = CARD_FIELDS, mediaTypes = listOf(org.jellyfin.sdk.model.api.MediaType.AUDIO),
+    ).content.items
 
     suspend fun resume(): List<BaseItemDto> = api.itemsApi.getResumeItems(
         userId = uid, limit = 20, fields = CARD_FIELDS,

@@ -66,4 +66,6 @@
     <string name="settings_server_theme">Utiliser le thème du serveur</string>
     <string name="settings_server_theme_desc">Les couleurs viennent de votre serveur Jellyfin (thème web et CSS personnalisé). Désactivez pour choisir les vôtres.</string>
     <string name="settings_server_theme_none">Ce serveur ne définit pas de thème : votre thème est utilisé.</string>
+    <string name="continue_listening">Reprendre l\'écoute</string>
+    <string name="live_tv_now">Télévision en direct</string>
 </resources>
