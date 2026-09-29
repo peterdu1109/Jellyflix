@@ -1,61 +1,109 @@
-# Jellyflix
+<p align="center">
+  <img src="docs/banner.svg" alt="Jellyflix" width="100%">
+</p>
 
-Client Jellyfin **natif** pour **Android** et **Android TV** (un seul APK), écrit en Kotlin / Jetpack Compose.
-Objectif : une app fluide, propre, et **personnalisable** (thèmes, plugins) là où le client officiel reste très classique.
+<p align="center">
+  <a href="https://github.com/peterdu1109/Jellyflix/releases/latest"><img alt="Dernière version" src="https://img.shields.io/github/v/release/peterdu1109/Jellyflix?style=for-the-badge&color=AA5CC3&label=version"></a>
+  <a href="https://github.com/peterdu1109/Jellyflix/releases"><img alt="Téléchargements" src="https://img.shields.io/github/downloads/peterdu1109/Jellyflix/total?style=for-the-badge&color=00A4DC"></a>
+  <a href="https://github.com/peterdu1109/Jellyflix/actions/workflows/build.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/peterdu1109/Jellyflix/build.yml?style=for-the-badge&label=build"></a>
+  <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white">
+</p>
 
-## Fonctionnalités
+<p align="center">
+  <a href="#-télécharger">Télécharger</a> ·
+  <a href="#-fonctionnalités">Fonctionnalités</a> ·
+  <a href="#-thèmes">Thèmes</a> ·
+  <a href="#-plugins">Plugins</a> ·
+  <a href="#-compiler">Compiler</a>
+</p>
 
-- **Connexion distante** : détection de l'adresse (ajout du schéma/port, préférence https), identifiant + mot de passe, **Quick Connect**, comptes multiples.
-- **Accueil** : Reprendre la lecture, À suivre, Favoris, Derniers ajouts par bibliothèque.
-- **Bibliothèques** : grille paginée (chargement à la volée), tri (A–Z, ajout, année, note).
-- **Détail** : films, séries, saisons, épisodes, similaires, vu / favori.
-- **Recherche** avec debounce et annulation des requêtes obsolètes.
-- **Lecteur Media3 (ExoPlayer)** :
-  - lecture directe quand l'appareil le permet (profil d'appareil construit depuis les décodeurs réels : HEVC, VP9, AV1, AC3/EAC3…), sinon transcodage HLS par le serveur ;
-  - repli automatique en transcodage si la lecture directe échoue ;
-  - pistes audio / sous-titres (externes, intégrés, ou incrustés pour PGS/VobSub), qualité maximale ;
-  - reprise de lecture et **rapport de progression** au serveur ;
-  - **Passer l'intro / le générique** via les segments média du serveur (compatible plugin *Intro Skipper*) ;
-  - épisode suivant automatique.
-- **Android TV** : navigation D-pad complète (anneau de focus, rail latéral, raccourcis télécommande dans le lecteur).
+---
 
-## Thèmes
+**Jellyflix** est un client [Jellyfin](https://jellyfin.org) natif pour **Android** et **Android TV** (un seul APK).
+Il reprend l'essentiel de l'app officielle, mais avec un design moderne, des **thèmes** et un système de **plugins** pour l'adapter à vos goûts.
 
-Réglages → Apparence : mode clair / sombre / système, **6 thèmes** (Jellyfin, Ocean, Forest, Sunset, Rose, Mono), **couleurs dynamiques** Material You, **noir pur AMOLED**, **accent personnalisé**.
-Ajouter un thème = ajouter une ligne dans `Palettes` (`ui/theme/Theme.kt`).
+## 📥 Télécharger
 
-## Plugins
+1. Ouvrez la page des **[Releases](https://github.com/peterdu1109/Jellyflix/releases/latest)** et téléchargez le fichier `Jellyflix-vX.Y.Z.apk`.
+2. **Téléphone** : ouvrez l'APK et autorisez l'installation depuis cette source.
+3. **Android TV** : installez l'app *Downloader* et saisissez l'adresse de l'APK, ou envoyez le fichier avec *Send Files to TV*.
+4. Lancez Jellyflix, entrez l'adresse de votre serveur, connectez-vous (mot de passe ou **Quick Connect**).
 
-Deux notions distinctes :
+> Prérequis : Android 8.0 ou plus, serveur Jellyfin 10.10 ou plus récent.
 
-1. **Plugins client** (`plugin/Plugins.kt`) — extensions de l'app, activables dans Réglages → Plugins. Contrats : `HomeSectionPlugin` (lignes de l'accueil) et `PlayerPlugin` (comportements du lecteur). Fournis : lignes d'accueil, favoris, saut d'intro/générique, épisode suivant automatique.
-2. **Plugins serveur** — la liste des plugins installés sur le serveur est affichée dans les réglages (si le compte a les droits) ; les fonctions qui en dépendent (ex. Intro Skipper) sont exploitées par l'app.
+Une nouvelle release est publiée **automatiquement** à chaque nouvelle version poussée sur `main`.
 
-## Architecture
+## ✨ Fonctionnalités
+
+| | |
+|---|---|
+| 🔐 **Connexion** | Détection de l'adresse (http/https, port), mot de passe, Quick Connect, plusieurs comptes |
+| 🏠 **Accueil** | Reprendre la lecture, À suivre, Favoris, Derniers ajouts par bibliothèque |
+| 📚 **Bibliothèques** | Grille paginée, tri par nom, ajout, année ou note |
+| 🎬 **Fiches** | Films, séries, saisons, épisodes, similaires, vu / favori |
+| 🔎 **Recherche** | Instantanée, sans requêtes inutiles |
+| ▶️ **Lecteur** | Lecture directe ou transcodage automatique, pistes audio et sous-titres, qualité, reprise, épisode suivant |
+| ⏭️ **Passer l'intro** | Intro / générique / résumé via les segments du serveur (compatible *Intro Skipper*) |
+| 📺 **Android TV** | Navigation complète à la télécommande, menu latéral, focus bien visible |
+
+**Sous le capot** : le profil de l'appareil est construit à partir de ses vrais décodeurs (HEVC, VP9, AV1, AC3…) pour ne transcoder que si nécessaire, avec repli automatique si la lecture directe échoue. La progression est renvoyée au serveur.
+
+## 🎨 Thèmes
+
+Réglages → Apparence :
+
+| Thème | Accent |
+|---|---|
+| **Jellyfin** | violet / bleu |
+| **Ocean** | bleu / turquoise |
+| **Forest** | vert |
+| **Sunset** | orange |
+| **Rose** | rose / mauve |
+| **Mono** | gris |
+
+En plus : mode clair / sombre / système, **couleurs dynamiques** (Material You), **noir pur AMOLED**, **accent personnalisé**.
+
+## 🧩 Plugins
+
+- **Plugins de l'app** : activables un par un dans Réglages → Plugins (lignes d'accueil, favoris, saut d'intro, épisode suivant automatique). Les développeurs peuvent en ajouter via `HomeSectionPlugin` et `PlayerPlugin` (`plugin/Plugins.kt`).
+- **Plugins du serveur** : la liste s'affiche dans les réglages (si votre compte a les droits), et l'app exploite ceux qu'elle connaît, comme *Intro Skipper*.
+
+## 🛠️ Compiler
+
+Prérequis : JDK 17+ et Android SDK (API 35).
+
+```bash
+./gradlew :app:assembleDebug     # APK de test
+./gradlew :app:assembleRelease   # APK optimisé (R8)
+```
+
+<details>
+<summary><b>Architecture</b></summary>
 
 ```
 app/src/main/java/dev/jellyflix
-├── data/      SessionManager (auth, comptes), MediaRepository (API), Settings (DataStore), AppContainer (DI)
-├── plugin/    contrats + plugins intégrés
-├── player/    PlayerViewModel (ExoPlayer, PlaybackInfo, rapports), DeviceProfiles
-└── ui/        theme, components, screens, navigation (téléphone : barre du bas / TV : rail)
+├── data/      SessionManager, MediaRepository, Settings (DataStore), AppContainer
+├── plugin/    contrats et plugins intégrés
+├── player/    PlayerViewModel (Media3), DeviceProfiles
+└── ui/        theme, components, screens, navigation (téléphone : barre / TV : rail)
 ```
 
-- SDK officiel `org.jellyfin.sdk` (1.6.x, serveurs Jellyfin 10.10+).
-- Pas de framework d'injection : un graphe unique (`AppContainer`) créé par l'`Application`.
-- État d'écran via `ViewModel` + `StateFlow`, `Load<T>` commun pour chargement / erreur / succès.
+Kotlin, Jetpack Compose, Media3, Coil, SDK officiel `org.jellyfin.sdk`, DataStore. Pas de framework d'injection : un graphe unique créé par l'`Application`.
+</details>
 
-## Compiler
+<details>
+<summary><b>Publier une nouvelle version</b></summary>
 
-Prérequis : JDK 17+, Android SDK (API 35).
+Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis poussez sur `main` : le workflow *Release* compile l'APK et crée la release `vX.Y.Z` avec ses notes.
 
-```bash
-./gradlew :app:assembleDebug     # APK dans app/build/outputs/apk/debug
-./gradlew :app:assembleRelease   # R8 activé
-```
+Pour une signature stable (mises à jour sans désinstaller), ajoutez les secrets du dépôt `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD`. Sans eux, l'APK est signé avec la clé de debug.
+</details>
 
-## Limites connues
+## ⚠️ Limites actuelles
 
-- Non testé sur appareil physique dans cet environnement : à valider sur un téléphone et une TV avant diffusion.
-- Les jetons de session sont stockés dans le DataStore privé de l'app (non chiffré) ; à migrer vers le Keystore pour durcir.
-- Musique, live TV, téléchargements hors-ligne et Chromecast ne sont pas encore couverts.
+Pas encore de musique, télé en direct, téléchargements hors-ligne ni Chromecast. Les jetons de connexion sont stockés dans le stockage privé de l'app, non chiffrés.
+
+## 📄 Licence
+
+Voir [LICENSE](LICENSE). Jellyflix n'est pas affilié au projet Jellyfin.

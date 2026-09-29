@@ -1,0 +1,79 @@
+name: Release
+
+# Publie automatiquement une release GitHub (APK inclus) à chaque push sur main
+# dont la versionName (app/build.gradle.kts) n'a pas encore de release. Pour sortir une
+# nouvelle version : incrémentez versionName / versionCode, puis poussez sur main.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lire la version
+        id: v
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: La release existe déjà ?
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-java@v4
+        if: steps.exists.outputs.skip == 'false'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.exists.outputs.skip == 'false'
+
+      - name: Clé de signature (optionnelle)
+        if: steps.exists.outputs.skip == 'false'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          else
+            echo "Aucun secret de signature : l'APK sera signé avec la clé de debug."
+          fi
+
+      - name: Compiler l'APK
+        if: steps.exists.outputs.skip == 'false'
+        run: |
+          ./gradlew :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "Jellyflix-${{ steps.v.outputs.tag }}.apk"
+
+      - name: Publier la release
+        if: steps.exists.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          name: Jellyflix ${{ steps.v.outputs.version }}
+          generate_release_notes: true
+          files: Jellyflix-${{ steps.v.outputs.tag }}.apk
+          body: |
+            ## 📲 Installation
+            1. Téléchargez **Jellyflix-${{ steps.v.outputs.tag }}.apk** ci-dessous.
+            2. **Téléphone** : ouvrez le fichier et autorisez l'installation depuis cette source.
+            3. **Android TV** : installez l'app *Downloader* (ou envoyez l'APK via *Send Files to TV*), puis ouvrez l'APK.
+            4. Lancez Jellyflix, saisissez l'adresse de votre serveur et connectez-vous.
+
+            Nécessite Android 8.0+ et un serveur Jellyfin 10.10 ou plus récent.
