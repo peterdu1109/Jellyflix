@@ -52,4 +52,15 @@
     <string name="mode_light">Clair</string>
     <string name="mode_dark">Sombre</string>
     <string name="back">Retour</string>
+    <string name="plugin_home_continue">Reprise &amp; derniers ajouts</string>
+    <string name="plugin_home_continue_desc">Lignes « Reprendre », « À suivre » et derniers ajouts sur l\'accueil.</string>
+    <string name="plugin_home_favorites">Ligne Favoris</string>
+    <string name="plugin_home_favorites_desc">Affiche vos favoris sur l\'accueil.</string>
+    <string name="plugin_segments">Passer intro / générique</string>
+    <string name="plugin_segments_desc">Bouton de saut via les segments média du serveur (compatible avec le plugin serveur Intro Skipper).</string>
+    <string name="plugin_autonext">Épisode suivant automatique</string>
+    <string name="plugin_autonext_desc">Lance l\'épisode suivant à la fin de celui en cours.</string>
+    <string name="no_server_plugins">Informations sur les plugins serveur indisponibles (droits administrateur requis).</string>
+    <string name="settings_accent_none">Par défaut du thème</string>
+    <string name="add_account">Ajouter un compte</string>
 </resources>

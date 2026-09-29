@@ -53,4 +53,15 @@
     <string name="mode_light">Light</string>
     <string name="mode_dark">Dark</string>
     <string name="back">Back</string>
+    <string name="plugin_home_continue">Continue watching &amp; latest</string>
+    <string name="plugin_home_continue_desc">Continue watching, next up and latest additions rows on Home.</string>
+    <string name="plugin_home_favorites">Favorites row</string>
+    <string name="plugin_home_favorites_desc">Shows your favorites on Home.</string>
+    <string name="plugin_segments">Skip intro / credits</string>
+    <string name="plugin_segments_desc">Skip button using server media segments (works with the Intro Skipper server plugin).</string>
+    <string name="plugin_autonext">Autoplay next episode</string>
+    <string name="plugin_autonext_desc">Starts the next episode when one ends.</string>
+    <string name="no_server_plugins">No server plugin information available (requires admin rights).</string>
+    <string name="settings_accent_none">Theme default</string>
+    <string name="add_account">Add account</string>
 </resources>

@@ -41,29 +41,29 @@ object BuiltInPlugins {
 
 private object ContinuePlugin : HomeSectionPlugin {
     override val id = "home.continue"
-    override val nameRes = dev.jellyflix.R.string.continue_watching
-    override val descriptionRes = dev.jellyflix.R.string.next_up
+    override val nameRes = dev.jellyflix.R.string.plugin_home_continue
+    override val descriptionRes = dev.jellyflix.R.string.plugin_home_continue_desc
     override val sections = listOf(HomeSection.ContinueWatching, HomeSection.NextUp, HomeSection.LatestPerLibrary)
 }
 
 private object FavoritesPlugin : HomeSectionPlugin {
     override val id = "home.favorites"
-    override val nameRes = dev.jellyflix.R.string.favorites
-    override val descriptionRes = dev.jellyflix.R.string.favorites
+    override val nameRes = dev.jellyflix.R.string.plugin_home_favorites
+    override val descriptionRes = dev.jellyflix.R.string.plugin_home_favorites_desc
     override val sections = listOf(HomeSection.Favorites)
 }
 
 private object SegmentSkipPlugin : PlayerPlugin {
     override val id = "player.segments"
-    override val nameRes = dev.jellyflix.R.string.skip_intro
-    override val descriptionRes = dev.jellyflix.R.string.skip_credits
+    override val nameRes = dev.jellyflix.R.string.plugin_segments
+    override val descriptionRes = dev.jellyflix.R.string.plugin_segments_desc
     override val serverPluginHints = listOf("Intro Skipper")
     override val showsSegmentSkip = true
 }
 
 private object AutoNextPlugin : PlayerPlugin {
     override val id = "player.autonext"
-    override val nameRes = dev.jellyflix.R.string.next_up
-    override val descriptionRes = dev.jellyflix.R.string.episodes
+    override val nameRes = dev.jellyflix.R.string.plugin_autonext
+    override val descriptionRes = dev.jellyflix.R.string.plugin_autonext_desc
     override val autoPlayNext = true
 }
