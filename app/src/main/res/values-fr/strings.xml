@@ -99,4 +99,5 @@
     <string name="recordings">Enregistrements</string>
     <string name="cast">Distribution</string>
     <string name="filmography">Filmographie</string>
+    <string name="casting_to">Diffusion vers %1$s</string>
 </resources>

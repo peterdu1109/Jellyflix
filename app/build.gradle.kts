@@ -13,8 +13,8 @@ android {
         applicationId = "dev.jellyflix"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     // Release signing comes from CI secrets; without them the build falls back to the debug key (local builds).
@@ -66,6 +66,9 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
+    implementation(libs.media3.cast)
+    implementation(libs.cast.framework)
+    implementation(libs.androidx.mediarouter)
 
     implementation(libs.coil.compose)
     implementation(libs.coil.network)

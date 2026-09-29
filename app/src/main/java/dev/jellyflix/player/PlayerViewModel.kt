@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -55,6 +56,7 @@ data class PlayerUiState(
     val item: BaseItemDto? = null,
     val loading: Boolean = true,
     val error: String? = null,
+    val castDevice: String? = null,
     val audio: List<TrackOption> = emptyList(),
     val subtitles: List<TrackOption> = emptyList(),
     val audioIndex: Int? = null,
@@ -72,6 +74,7 @@ class PlayerViewModel(
     private val session get() = container.session.current ?: error("Not signed in")
     private val api get() = session.api
 
+    /** The local ExoPlayer (renders on the device). */
     val player: ExoPlayer = ExoPlayer.Builder(app)
         .setMediaSourceFactory(
             DefaultMediaSourceFactory(
@@ -83,6 +86,12 @@ class PlayerViewModel(
         .setHandleAudioBecomingNoisy(true)
         .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
         .build()
+
+    // ---- Chromecast: [active] is whichever player currently owns playback ----
+    private var castPlayer: androidx.media3.cast.CastPlayer? = null
+    private var casting = false
+    val active: Player get() = if (casting) castPlayer ?: player else player
+    val castAvailable: Boolean get() = castPlayer != null
 
     private val _ui = MutableStateFlow(PlayerUiState())
     val ui: StateFlow<PlayerUiState> = _ui
@@ -99,7 +108,7 @@ class PlayerViewModel(
     private var stopped = false
 
     init {
-        player.addListener(object : Player.Listener {
+        val sharedListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 // A direct play failure (unsupported codec…) falls back to server transcoding once.
                 if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY && !forcedTranscode && !isLocal) {
@@ -112,7 +121,9 @@ class PlayerViewModel(
                 if (state == Player.STATE_ENDED) onEnded()
             }
             override fun onTracksChanged(tracks: Tracks) { /* selection is driven by the user; nothing to sync */ }
-        })
+        }
+        player.addListener(sharedListener)
+        initCast(sharedListener)
         viewModelScope.launch {
             settings = container.settings.settings.first()
             start()
@@ -120,6 +131,74 @@ class PlayerViewModel(
     }
 
     private var forcedTranscode = false
+
+    /** Cast needs Google Play services and a phone/tablet; anything missing simply hides the cast button. */
+    @Suppress("DEPRECATION")
+    private fun initCast(listener: Player.Listener) {
+        if (app.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)) return
+        runCatching {
+            val ctx = com.google.android.gms.cast.framework.CastContext.getSharedInstance(app)
+            castPlayer = androidx.media3.cast.CastPlayer(ctx).also { cp ->
+                cp.addListener(listener)
+                cp.setSessionAvailabilityListener(object : androidx.media3.cast.SessionAvailabilityListener {
+                    override fun onCastSessionAvailable() { startCasting() }
+                    override fun onCastSessionUnavailable() { stopCasting() }
+                })
+                if (cp.isCastSessionAvailable) startCasting()
+            }
+        }
+    }
+
+    private fun startCasting() {
+        if (casting || isLocal) return
+        val at = positionMs()
+        val name = runCatching {
+            com.google.android.gms.cast.framework.CastContext.getSharedInstance(app).sessionManager.currentCastSession?.castDevice?.friendlyName
+        }.getOrNull()
+        player.pause()
+        casting = true
+        _ui.update { it.copy(castDevice = name ?: "Chromecast") }
+        viewModelScope.launch {
+            runCatching { loadCast(at) }.onFailure { e -> _ui.update { it.copy(error = e.message) } }
+        }
+    }
+
+    private fun stopCasting() {
+        if (!casting) return
+        val at = positionMs()
+        casting = false
+        castPlayer?.let { it.stop(); it.clearMediaItems() }
+        _ui.update { it.copy(castDevice = null) }
+        if (!isLocal) reload(at, _ui.value.audioIndex, _ui.value.subtitleIndex)
+    }
+
+    /** Receivers only take H.264/AAC: always ask the server for a transcoded HLS stream (subtitles burned in). */
+    private suspend fun loadCast(startMs: Long) {
+        val sub = _ui.value.subtitleIndex
+        val info = api.mediaInfoApi.getPostedPlaybackInfo(
+            itemId = itemId,
+            data = PlaybackInfoDto(
+                userId = session.userId, startTimeTicks = startMs * 10_000,
+                audioStreamIndex = _ui.value.audioIndex, subtitleStreamIndex = sub ?: -1,
+                maxStreamingBitrate = settings.quality.bitrate ?: 20_000_000,
+                deviceProfile = DeviceProfiles.build(settings.quality.bitrate ?: 20_000_000, castReceiver = true),
+                enableDirectPlay = false, enableDirectStream = false, enableTranscoding = true, autoOpenLiveStream = true,
+            ),
+        ).content
+        val src = info.mediaSources.firstOrNull() ?: error(info.errorCode?.name ?: "No playable source")
+        val tUrl = src.transcodingUrl ?: error("Transcoding unavailable for casting")
+        source = src; playSessionId = info.playSessionId; liveStreamId = src.liveStreamId
+        // The receiver can't send our auth header, so the token must travel in the URL.
+        val url = session.account.serverUrl.trimEnd('/') + tUrl + if ("api_key=" in tUrl) "" else "&api_key=${Uri.encode(session.account.token)}"
+        val item = _ui.value.item
+        val meta = MediaMetadata.Builder().setTitle(item?.name).setArtworkUri(item?.let { container.repository.imageUrl(it, org.jellyfin.sdk.model.api.ImageType.PRIMARY, 600) }?.let(Uri::parse)).build()
+        streamOffsetMs = 0
+        pendingStartMs = if (startMs > 0) startMs else null
+        castPlayer?.setMediaItem(MediaItem.Builder().setUri(url).setMimeType(MimeTypes.APPLICATION_M3U8).setMediaMetadata(meta).build())
+        castPlayer?.prepare()
+        castPlayer?.playWhenReady = true
+        reportStart()
+    }
     /** Media position (ms) at which the current server stream's own timeline starts; 0 for absolute timelines. */
     private var streamOffsetMs = 0L
     private var pendingStartMs: Long? = null
@@ -175,7 +254,7 @@ class PlayerViewModel(
 
     private fun reload(positionMs: Long, audioIndex: Int?, subtitleIndex: Int?) {
         viewModelScope.launch {
-            runCatching { load(positionMs, audioIndex, subtitleIndex, first = false) }
+            runCatching { if (casting) loadCast(positionMs) else load(positionMs, audioIndex, subtitleIndex, first = false) }
                 .onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
         }
     }
@@ -282,20 +361,20 @@ class PlayerViewModel(
     private fun resolveStartOffset() {
         val start = pendingStartMs ?: return
         pendingStartMs = null
-        val dur = player.duration
+        val dur = active.duration
         val full = runtimeMs
-        if (dur == C.TIME_UNSET || full <= 0) { player.seekTo(start); return }
-        if (kotlin.math.abs(dur - full) <= maxOf(15_000L, full / 50)) player.seekTo(start) else streamOffsetMs = start
+        if (dur == C.TIME_UNSET || full <= 0) { active.seekTo(start); return }
+        if (kotlin.math.abs(dur - full) <= maxOf(15_000L, full / 50)) active.seekTo(start) else streamOffsetMs = start
     }
 
     /** Absolute position in the media, regardless of how the stream's own timeline starts. */
-    fun positionMs(): Long = streamOffsetMs + player.currentPosition
-    fun durationMs(): Long = if (runtimeMs > 0) runtimeMs else player.duration.coerceAtLeast(0)
+    fun positionMs(): Long = streamOffsetMs + active.currentPosition
+    fun durationMs(): Long = if (runtimeMs > 0) runtimeMs else active.duration.coerceAtLeast(0)
 
     fun seekToMs(ms: Long) {
         val target = ms.coerceIn(0, durationMs().takeIf { it > 0 } ?: Long.MAX_VALUE)
         val rel = target - streamOffsetMs
-        if (rel >= 0) player.seekTo(rel) else reload(target, _ui.value.audioIndex, _ui.value.subtitleIndex)
+        if (rel >= 0) active.seekTo(rel) else reload(target, _ui.value.audioIndex, _ui.value.subtitleIndex)
     }
 
     fun seekByMs(delta: Long) = seekToMs(positionMs() + delta)
@@ -383,7 +462,7 @@ class PlayerViewModel(
                 val pos = positionMs()
                 val seg = segments.firstOrNull { it.type != MediaSegmentType.UNKNOWN && pos >= it.startMs && pos < it.endMs - 1000 }
                 if (seg != _ui.value.activeSegment) _ui.update { it.copy(activeSegment = seg) }
-                if (++sinceReport >= 20 && player.isPlaying) { sinceReport = 0; reportProgress() }
+                if (++sinceReport >= 20 && active.isPlaying) { sinceReport = 0; reportProgress() }
             }
         }
     }
@@ -417,7 +496,7 @@ class PlayerViewModel(
         viewModelScope.launch {
             runCatching {
                 api.playStateApi.reportPlaybackProgress(PlaybackProgressInfo(
-                    itemId = itemId, canSeek = true, isPaused = !player.isPlaying, isMuted = player.volume == 0f, positionTicks = ticks(),
+                    itemId = itemId, canSeek = true, isPaused = !active.isPlaying, isMuted = false, positionTicks = ticks(),
                     playMethod = _ui.value.playMethod, playSessionId = playSessionId, mediaSourceId = source?.id,
                     audioStreamIndex = _ui.value.audioIndex, subtitleStreamIndex = _ui.value.subtitleIndex,
                     repeatMode = RepeatMode.REPEAT_NONE, playbackOrder = PlaybackOrder.DEFAULT,
@@ -447,6 +526,8 @@ class PlayerViewModel(
                 api.playStateApi.reportPlaybackStopped(PlaybackStopInfo(itemId = itemId, positionTicks = ticks, playSessionId = playSessionId, mediaSourceId = source?.id, failed = false))
             }
         }
+        if (casting) runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(app).sessionManager.endCurrentSession(true) }
+        castPlayer?.release()
         player.release()
     }
 }

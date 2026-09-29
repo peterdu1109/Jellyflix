@@ -23,6 +23,11 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Jellyflix">
 
+        <!-- Chromecast: default media receiver, provided by media3-cast. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="androidx.media3.cast.DefaultCastOptionsProvider" />
+
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode"

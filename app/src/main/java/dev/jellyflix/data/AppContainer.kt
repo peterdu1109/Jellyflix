@@ -19,7 +19,7 @@ class AppContainer(context: Context) {
     val plugins = BuiltInPlugins.create()
 
     val jellyfin: Jellyfin = createJellyfin {
-        clientInfo = ClientInfo(name = "Jellyflix", version = "0.2.0")
+        clientInfo = ClientInfo(name = "Jellyflix", version = "0.3.0")
         deviceInfo = DeviceInfo(
             id = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "jellyflix-device",
             name = Build.MODEL ?: "Android",

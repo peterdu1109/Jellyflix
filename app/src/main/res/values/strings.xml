@@ -100,4 +100,5 @@
     <string name="recordings">Recordings</string>
     <string name="cast">Cast &amp; crew</string>
     <string name="filmography">Filmography</string>
+    <string name="casting_to">Casting to %1$s</string>
 </resources>
