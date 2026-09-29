@@ -96,4 +96,6 @@
     <string name="songs">Songs</string>
     <string name="now_playing">Now playing</string>
     <string name="queue">Up next</string>
+    <string name="channels">Channels</string>
+    <string name="recordings">Recordings</string>
 </resources>

@@ -126,6 +126,8 @@ class PlayerViewModel(
     private var runtimeMs = 0L
     /** Playing a downloaded file: no server calls are needed (or possible) to start it. */
     private var isLocal = false
+    /** Set for Live TV: the tuner stream must be closed on the server when we leave. */
+    private var liveStreamId: String? = null
 
     private suspend fun start() {
         runCatching {
@@ -225,8 +227,10 @@ class PlayerViewModel(
         val base = session.account.serverUrl.trimEnd('/')
         val token = Uri.encode(session.account.token)
 
+        liveStreamId = src.liveStreamId
         val url = if (method == PlayMethod.DIRECT_PLAY)
-            "$base/Videos/$itemId/stream?static=true&mediaSourceId=${src.id}&api_key=$token" + (playSessionId?.let { "&playSessionId=$it" } ?: "")
+            "$base/Videos/$itemId/stream?static=true&mediaSourceId=${src.id}&api_key=$token" + (playSessionId?.let { "&playSessionId=$it" } ?: "") +
+                (src.liveStreamId?.let { "&liveStreamId=$it" } ?: "")
         else base + src.transcodingUrl
 
         val streams = src.mediaStreams.orEmpty()
@@ -437,6 +441,7 @@ class PlayerViewModel(
         val ticks = ticks()
         if (isLocal) container.downloads.savePosition(itemId, ticks)
         // viewModelScope is already cancelled here, so report on the application scope.
+        liveStreamId?.let { id -> container.appScope.launch { runCatching { api.mediaInfoApi.closeLiveStream(id) } } }
         if (!stopped) container.appScope.launch {
             runCatching {
                 api.playStateApi.reportPlaybackStopped(PlaybackStopInfo(itemId = itemId, positionTicks = ticks, playSessionId = playSessionId, mediaSourceId = source?.id, failed = false))

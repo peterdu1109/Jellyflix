@@ -146,6 +146,8 @@ fun cardSubtitle(item: BaseItemDto): String? = when (item.type) {
     BaseItemKind.EPISODE -> listOfNotNull(
         item.parentIndexNumber?.let { "S$it" }, item.indexNumber?.let { "E$it" },
     ).joinToString("").takeIf { it.isNotEmpty() }?.let { "$it · ${item.name}" } ?: item.name
+    BaseItemKind.TV_CHANNEL -> item.currentProgram?.name
+    BaseItemKind.PROGRAM -> item.channelName
     else -> item.productionYear?.toString()
 }
 

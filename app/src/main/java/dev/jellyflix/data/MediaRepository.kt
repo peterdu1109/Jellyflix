@@ -60,6 +60,12 @@ class MediaRepository(private val sessions: SessionManager) {
         )
     }
 
+    suspend fun liveChannels(limit: Int = 200): List<BaseItemDto> = api.liveTvApi.getLiveTvChannels(
+        userId = uid, limit = limit, addCurrentProgram = true, enableFavoriteSorting = true,
+    ).content.items
+
+    suspend fun recordings(): List<BaseItemDto> = api.liveTvApi.getRecordings(userId = uid).content.items
+
     /** Channels with what's on right now; empty when the server has no Live TV. */
     suspend fun liveTvNow(): List<BaseItemDto> = api.liveTvApi.getLiveTvChannels(
         userId = uid, limit = 20, addCurrentProgram = true, enableFavoriteSorting = true,

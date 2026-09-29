@@ -95,4 +95,6 @@
     <string name="songs">Titres</string>
     <string name="now_playing">En cours de lecture</string>
     <string name="queue">À suivre</string>
+    <string name="channels">Chaînes</string>
+    <string name="recordings">Enregistrements</string>
 </resources>

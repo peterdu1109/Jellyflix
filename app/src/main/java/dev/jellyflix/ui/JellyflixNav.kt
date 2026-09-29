@@ -38,6 +38,7 @@ import dev.jellyflix.ui.screens.DetailScreen
 import dev.jellyflix.ui.screens.DownloadsScreen
 import dev.jellyflix.ui.screens.HomeScreen
 import dev.jellyflix.ui.screens.LibrariesScreen
+import dev.jellyflix.ui.screens.LiveTvScreen
 import dev.jellyflix.ui.screens.MiniPlayer
 import dev.jellyflix.ui.screens.NowPlayingScreen
 import dev.jellyflix.ui.screens.LibraryScreen
@@ -78,9 +79,13 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
     val route = entry?.destination?.route
     val showBars = Tabs.any { it.route == route }
 
-    fun open(item: BaseItemDto) = when (item.type) {
+    fun open(item: BaseItemDto) = when {
+        item.collectionType == org.jellyfin.sdk.model.api.CollectionType.LIVETV -> nav.navigate("livetv")
+        item.type == BaseItemKind.PROGRAM -> item.channelId?.let { nav.navigate(Routes.player(it)) } ?: Unit
+        else -> when (item.type) {
         BaseItemKind.COLLECTION_FOLDER, BaseItemKind.USER_VIEW, BaseItemKind.FOLDER -> nav.navigate(Routes.library(item.id))
         else -> nav.navigate(Routes.detail(item.id))
+    }
     }
     val music = rememberContainer().music
     fun play(item: BaseItemDto) {
@@ -101,6 +106,7 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
         NavHost(nav, startDestination = "home", modifier = mod) {
             composable("home") { HomeScreen(settings, plugins, ::open, ::play, ::open, onOpenDownloads = { go(Tabs.first { it.route == "downloads" }) }) }
             composable("downloads") { DownloadsScreen(::play) }
+            composable("livetv") { LiveTvScreen(onPlay = ::play, onBack = { nav.popBackStack() }) }
             composable("nowplaying") { NowPlayingScreen(onBack = { nav.popBackStack() }) }
             composable("libraries") { LibrariesScreen(::open) }
             composable("search") { SearchScreen(::open) }
