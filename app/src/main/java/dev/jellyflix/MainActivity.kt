@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
                                 // Re-read the server theme for every account/session so admin changes show up on next launch.
                                 androidx.compose.runtime.LaunchedEffect(a.session.account.key) {
                                     container.serverTheme.sync(container.settings)
+                                    container.downloads.syncPositions()
                                 }
                                 JellyflixNav(settings, container.plugins)
                             }

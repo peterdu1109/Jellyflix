@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -159,6 +162,7 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                                     Text(stringResource(if (resume) R.string.resume else R.string.play), Modifier.padding(start = 6.dp))
                                 }
                             }
+                            DownloadButton(item, d.episodes)
                             FilledTonalIconButton(vm::togglePlayed, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) {
                                 Icon(Icons.Default.Check, stringResource(R.string.mark_watched), tint = if (item.userData?.played == true) MaterialTheme.colorScheme.primary else LocalContentColorFallback())
                             }
@@ -214,6 +218,43 @@ private fun EpisodeRow(ep: BaseItemDto, onPlay: () -> Unit, repo: MediaRepositor
             Text("${ep.indexNumber ?: ""}. ${ep.name}", style = MaterialTheme.typography.titleSmall, maxLines = 2)
             formatRuntime(ep.runTimeTicks)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             ep.overview?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+        }
+    }
+}
+
+/**
+ * Movie/episode: download, show progress, or mark as downloaded. Series/season: download every episode listed.
+ * Asks for the notification permission first on Android 13+ (the download runs as a foreground service).
+ */
+@Composable
+private fun DownloadButton(item: BaseItemDto, episodes: List<BaseItemDto>) {
+    val downloads = rememberContainer().downloads
+    val all by downloads.entries.collectAsState()
+    val targets = when (item.type) {
+        BaseItemKind.SERIES, BaseItemKind.SEASON -> episodes.filter { it.type == BaseItemKind.EPISODE }
+        else -> listOf(item)
+    }
+    if (targets.isEmpty()) return
+    val states = targets.mapNotNull { all[it.id.toString()]?.status }
+    val allDone = states.size == targets.size && states.all { it == dev.jellyflix.download.DownloadStatus.COMPLETE }
+    val active = states.any { it == dev.jellyflix.download.DownloadStatus.DOWNLOADING || it == dev.jellyflix.download.DownloadStatus.QUEUED }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {
+        downloads.enqueue(targets) // download even if notifications were declined
+    }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    FilledTonalIconButton(
+        {
+            if (allDone || active) return@FilledTonalIconButton
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS) else downloads.enqueue(targets)
+        },
+        Modifier.focusRing(androidx.compose.foundation.shape.CircleShape),
+    ) {
+        when {
+            allDone -> Icon(Icons.Default.DownloadDone, stringResource(R.string.downloaded), tint = MaterialTheme.colorScheme.primary)
+            active -> androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            else -> Icon(Icons.Default.Download, stringResource(if (targets.size > 1) R.string.download_season else R.string.download))
         }
     }
 }

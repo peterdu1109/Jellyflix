@@ -38,6 +38,7 @@ data class AppSettings(
     val quality: QualityCap = QualityCap.Auto,
     val disabledPlugins: Set<String> = emptySet(),
     /** Follow the theme defined by the Jellyfin server (web theme + branding CSS). */
+    val downloadWifiOnly: Boolean = true,
     val useServerTheme: Boolean = true,
     val serverTheme: ServerTheme = ServerTheme(),
 )
@@ -58,6 +59,7 @@ class SettingsRepository(private val context: Context) {
         val accounts = stringPreferencesKey("accounts_enc")
         val current = stringPreferencesKey("current_account")
         val useServerTheme = booleanPreferencesKey("use_server_theme")
+        val wifiOnly = booleanPreferencesKey("download_wifi_only")
         val serverAccent = intPreferencesKey("server_accent")
         val serverBg = intPreferencesKey("server_bg")
         val serverDark = booleanPreferencesKey("server_dark")
@@ -72,6 +74,7 @@ class SettingsRepository(private val context: Context) {
             customAccent = p[K.accent],
             quality = p[K.quality]?.let { runCatching { QualityCap.valueOf(it) }.getOrNull() } ?: QualityCap.Auto,
             disabledPlugins = p[K.disabledPlugins] ?: emptySet(),
+            downloadWifiOnly = p[K.wifiOnly] ?: true,
             useServerTheme = p[K.useServerTheme] ?: true,
             serverTheme = ServerTheme(p[K.serverAccent], p[K.serverBg], p[K.serverDark]),
         )
@@ -88,6 +91,7 @@ class SettingsRepository(private val context: Context) {
         fun quality(v: QualityCap) { p[K.quality] = v.name }
         fun disabledPlugins(v: Set<String>) { p[K.disabledPlugins] = v }
         fun useServerTheme(v: Boolean) { p[K.useServerTheme] = v }
+        fun downloadWifiOnly(v: Boolean) { p[K.wifiOnly] = v }
         fun serverTheme(t: ServerTheme) {
             t.accent?.let { p[K.serverAccent] = it } ?: p.remove(K.serverAccent)
             t.background?.let { p[K.serverBg] = it } ?: p.remove(K.serverBg)

@@ -69,4 +69,24 @@
     <string name="settings_server_theme_none">This server doesn\'t define a theme, so your own theme is used.</string>
     <string name="continue_listening">Continue listening</string>
     <string name="live_tv_now">Live TV</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="download">Download</string>
+    <string name="download_season">Download season</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="downloading">Downloading…</string>
+    <string name="downloads_channel">Downloads</string>
+    <string name="downloads_notification_title">Downloading for offline</string>
+    <string name="downloads_preparing">Preparing…</string>
+    <string name="downloads_empty">Nothing downloaded yet. Open a movie or episode and tap Download.</string>
+    <string name="downloads_storage">%1$s used</string>
+    <string name="downloads_delete_all">Delete all</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume download</string>
+    <string name="download_failed">Failed</string>
+    <string name="download_paused">Paused</string>
+    <string name="download_queued">Waiting</string>
+    <string name="settings_downloads">Downloads</string>
+    <string name="settings_wifi_only">Download on Wi‑Fi only</string>
+    <string name="offline_hint">You seem to be offline. Your downloads are still available.</string>
+    <string name="open_downloads">Open downloads</string>
 </resources>

@@ -97,13 +97,22 @@ class HomeViewModel(private val repo: MediaRepository) : ViewModel() {
 }
 
 @Composable
-fun HomeScreen(settings: AppSettings, plugins: PluginRegistry, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit, onOpenLibrary: (BaseItemDto) -> Unit) {
+fun HomeScreen(settings: AppSettings, plugins: PluginRegistry, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit, onOpenLibrary: (BaseItemDto) -> Unit, onOpenDownloads: () -> Unit = {}) {
     val vm = appViewModel { HomeViewModel(it.repository) }
     val repo = rememberContainer().repository
     val state by vm.state.collectAsState()
     val allowed = plugins.homeSections(settings)
     LaunchedEffect(Unit) { vm.refresh() }
 
+    // Offline (or server unreachable): the downloads are still one tap away.
+    if (state is Load.Failed) {
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+            dev.jellyflix.ui.components.ErrorView((state as Load.Failed).message, vm::load, Modifier.padding(24.dp))
+            androidx.compose.material3.Text(stringResource(R.string.offline_hint), style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 24.dp))
+            androidx.compose.material3.Button(onOpenDownloads, Modifier.padding(top = 12.dp)) { androidx.compose.material3.Text(stringResource(R.string.open_downloads)) }
+        }
+        return
+    }
     LoadView(state, vm::load) { rows ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
             items(rows, key = { it.key }) { row ->

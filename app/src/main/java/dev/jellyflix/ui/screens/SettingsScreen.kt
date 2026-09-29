@@ -123,6 +123,10 @@ fun SettingsScreen(settings: AppSettings) {
         }
         item { HorizontalDivider() }
 
+        item { Header(R.string.settings_downloads) }
+        item { SwitchRow(stringResource(R.string.settings_wifi_only), settings.downloadWifiOnly) { v -> update { it.downloadWifiOnly(v) } } }
+        item { HorizontalDivider() }
+
         item { Header(R.string.settings_plugins) }
         items(c.plugins.all, key = { it.id }) { plugin ->
             val enabled = plugin.id !in settings.disabledPlugins

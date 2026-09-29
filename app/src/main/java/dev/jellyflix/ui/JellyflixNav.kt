@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -33,6 +34,7 @@ import dev.jellyflix.R
 import dev.jellyflix.data.AppSettings
 import dev.jellyflix.plugin.PluginRegistry
 import dev.jellyflix.ui.screens.DetailScreen
+import dev.jellyflix.ui.screens.DownloadsScreen
 import dev.jellyflix.ui.screens.HomeScreen
 import dev.jellyflix.ui.screens.LibrariesScreen
 import dev.jellyflix.ui.screens.LibraryScreen
@@ -50,6 +52,7 @@ private val Tabs = listOf(
     Tab("home", R.string.nav_home, Icons.Default.Home),
     Tab("libraries", R.string.nav_library, Icons.Default.VideoLibrary),
     Tab("search", R.string.nav_search, Icons.Default.Search),
+    Tab("downloads", R.string.nav_downloads, Icons.Default.Download),
     Tab("settings", R.string.nav_settings, Icons.Default.Settings),
 )
 
@@ -78,9 +81,15 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
     }
     fun play(item: BaseItemDto) = nav.navigate(Routes.player(item.id))
 
+    fun go(tab: Tab) = nav.navigate(tab.route) {
+        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true; restoreState = true
+    }
+
     val content: @Composable (Modifier) -> Unit = { mod ->
         NavHost(nav, startDestination = "home", modifier = mod) {
-            composable("home") { HomeScreen(settings, plugins, ::open, ::play, ::open) }
+            composable("home") { HomeScreen(settings, plugins, ::open, ::play, ::open, onOpenDownloads = { go(Tabs.first { it.route == "downloads" }) }) }
+            composable("downloads") { DownloadsScreen(::play) }
             composable("libraries") { LibrariesScreen(::open) }
             composable("search") { SearchScreen(::open) }
             composable("settings") { SettingsScreen(settings) }
@@ -95,11 +104,6 @@ fun JellyflixNav(settings: AppSettings, plugins: PluginRegistry) {
                 )
             }
         }
-    }
-
-    fun go(tab: Tab) = nav.navigate(tab.route) {
-        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true; restoreState = true
     }
 
     if (isTv) {

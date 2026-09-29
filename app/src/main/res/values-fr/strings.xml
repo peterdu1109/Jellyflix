@@ -68,4 +68,24 @@
     <string name="settings_server_theme_none">Ce serveur ne définit pas de thème : votre thème est utilisé.</string>
     <string name="continue_listening">Reprendre l\'écoute</string>
     <string name="live_tv_now">Télévision en direct</string>
+    <string name="nav_downloads">Téléchargements</string>
+    <string name="download">Télécharger</string>
+    <string name="download_season">Télécharger la saison</string>
+    <string name="downloaded">Téléchargé</string>
+    <string name="downloading">Téléchargement…</string>
+    <string name="downloads_channel">Téléchargements</string>
+    <string name="downloads_notification_title">Téléchargement hors-ligne</string>
+    <string name="downloads_preparing">Préparation…</string>
+    <string name="downloads_empty">Rien de téléchargé pour l\'instant. Ouvrez un film ou un épisode et touchez Télécharger.</string>
+    <string name="downloads_storage">%1$s utilisés</string>
+    <string name="downloads_delete_all">Tout supprimer</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Reprendre le téléchargement</string>
+    <string name="download_failed">Échec</string>
+    <string name="download_paused">En pause</string>
+    <string name="download_queued">En attente</string>
+    <string name="settings_downloads">Téléchargements</string>
+    <string name="settings_wifi_only">Télécharger uniquement en Wi‑Fi</string>
+    <string name="offline_hint">Vous semblez hors-ligne. Vos téléchargements restent disponibles.</string>
+    <string name="open_downloads">Ouvrir les téléchargements</string>
 </resources>
