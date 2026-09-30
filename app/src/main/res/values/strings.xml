@@ -108,4 +108,10 @@
     <string name="web_reload">Reload</string>
     <string name="web_use_native">Use the native interface</string>
     <string name="web_quit">Quit</string>
+    <string name="web_player_use_browser">Video player: switch to the browser player</string>
+    <string name="web_player_use_native">Video player: switch to the device player</string>
+    <string name="settings_video_player">Video player</string>
+    <string name="video_player_native">Device player (hardware decoding)</string>
+    <string name="video_player_browser">Browser player</string>
+    <string name="video_player_hint">The device player uses your TV or phone\'s own decoders when they can read the video, and asks the server to convert it only when they can\'t.</string>
 </resources>

@@ -14,8 +14,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // CI passes a growing number so every published APK can update the previous one; local builds keep 4.
-        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 4
-        versionName = "0.4.0"
+        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 5
+        versionName = "0.5.0"
     }
 
     // Release signing comes from CI secrets; without them the build falls back to the debug key (local builds).

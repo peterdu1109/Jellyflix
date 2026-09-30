@@ -25,6 +25,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +46,16 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import dev.jellyflix.R
 import dev.jellyflix.data.Session
+import dev.jellyflix.player.DeviceProfiles
+import dev.jellyflix.player.ExternalStream
+import dev.jellyflix.player.PlayerEvents
+import dev.jellyflix.player.PlayerViewModel
+import dev.jellyflix.ui.screens.ExternalPlayerScreen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.put
+import org.jellyfin.sdk.model.api.DeviceProfile
 import dev.jellyflix.ui.components.ErrorView
 import dev.jellyflix.ui.components.Load
 import dev.jellyflix.ui.components.LoadingView
@@ -72,6 +85,9 @@ fun clearWebData() {
 fun ServerWebScreen(
     session: Session,
     isTv: Boolean,
+    nativePlayer: Boolean,
+    accent: Int?,
+    onToggleNativePlayer: () -> Unit,
     onUseNative: () -> Unit,
     onSignOut: () -> Unit,
     onQuit: () -> Unit,
@@ -96,7 +112,7 @@ fun ServerWebScreen(
     when (val s = server) {
         Load.Loading -> LoadingView()
         is Load.Failed -> ErrorView(s.message, { reloadKey++ })
-        is Load.Ready -> WebHost(session, s.data.first, s.data.second, session.api.deviceInfo.id, isTv, reloadKey, onMenu = { showMenu = true })
+        is Load.Ready -> WebHost(session, s.data.first, s.data.second, session.api.deviceInfo.id, isTv, nativePlayer, accent, reloadKey, onMenu = { showMenu = true })
     }
     // Also reachable from the error screen: a server that can't be reached must not trap the user in web mode.
     BackHandler(enabled = server is Load.Failed) { showMenu = true }
@@ -107,6 +123,9 @@ fun ServerWebScreen(
         text = {
             Column {
                 TextButton({ showMenu = false; reloadKey++ }) { Text(stringResource(R.string.web_reload)) }
+                TextButton({ showMenu = false; onToggleNativePlayer(); reloadKey++ }) {
+                    Text(stringResource(if (nativePlayer) R.string.web_player_use_browser else R.string.web_player_use_native))
+                }
                 TextButton({ showMenu = false; onUseNative() }) { Text(stringResource(R.string.web_use_native)) }
                 TextButton({ showMenu = false; onSignOut() }) { Text(stringResource(R.string.sign_out)) }
                 TextButton({ showMenu = false; onQuit() }) { Text(stringResource(R.string.web_quit)) }
@@ -118,7 +137,10 @@ fun ServerWebScreen(
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun WebHost(session: Session, serverId: String, serverName: String, deviceId: String, isTv: Boolean, reloadKey: Int, onMenu: () -> Unit) {
+private fun WebHost(
+    session: Session, serverId: String, serverName: String, deviceId: String, isTv: Boolean,
+    nativePlayer: Boolean, accent: Int?, reloadKey: Int, onMenu: () -> Unit,
+) {
     val ctx = LocalContext.current
     val activity = ctx as? Activity
     val serverUrl = session.account.serverUrl
@@ -136,10 +158,65 @@ private fun WebHost(session: Session, serverId: String, serverName: String, devi
     }
     val (root, web, overlay) = holder
 
+    // ---- the app's hardware player on top of the web interface ----
+    val scope = rememberCoroutineScope()
+    var nativeStream by remember(holder) { mutableStateOf<ExternalStream?>(null) }
+    var serial by remember(holder) { mutableIntStateOf(0) }
+    var playerVm by remember(holder) { mutableStateOf<PlayerViewModel?>(null) }
+    val send = remember(holder) { { e: kotlinx.serialization.json.JsonObject -> web.post { web.evaluateJavascript(WebPlayerBridge.eventScript(e), null) }; Unit } }
+    val events = remember(holder) {
+        object : PlayerEvents {
+            override fun started() = send(WebPlayerBridge.event("started"))
+            override fun time(positionMs: Long, durationMs: Long, paused: Boolean) =
+                send(WebPlayerBridge.event("time") { put("ms", positionMs); put("dur", durationMs); put("paused", paused) })
+            override fun ended() {
+                send(WebPlayerBridge.event("ended"))
+                // The web client may start the next episode right away; if it doesn't, give the screen back.
+                val endedSerial = nativeStream?.serial
+                scope.launch { delay(2500); if (nativeStream?.serial == endedSerial) nativeStream = null }
+            }
+            override fun userStop(positionMs: Long) = send(WebPlayerBridge.event("userstop") { put("ms", positionMs) })
+            override fun error(type: String) = send(WebPlayerBridge.event("error") { put("errorType", type) })
+            override fun selectAudio(index: Int) = send(WebPlayerBridge.event("audio") { put("index", index) })
+            override fun selectSubtitle(index: Int) = send(WebPlayerBridge.event("subtitle") { put("index", index) })
+            override fun selectBitrate(bitrate: Int?) = send(WebPlayerBridge.event("bitrate") { put("bitrate", bitrate) })
+        }
+    }
+    val assetJs = remember { runCatching { ctx.assets.open("web/jellyflix-web.js").bufferedReader().use { it.readText() } }.getOrDefault("") }
+    val profile = remember(nativePlayer) {
+        if (!nativePlayer) null
+        else runCatching { Json { encodeDefaults = true; explicitNulls = false }.encodeToJsonElement(DeviceProfile.serializer(), DeviceProfiles.build(null)) }.getOrNull()
+    }
+
     DisposableEffect(holder) {
-        val script = WebBootstrap.script(serverUrl, serverId, serverName, session.account.userId, session.account.token, deviceId, isTv)
         val origin = WebBootstrap.origin(serverUrl)
         val documentStartScript = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+
+        // The player needs both a document-start script (to register before the web client boots) and the message
+        // channel. The channel is restricted to the server's origin; any failure means the web player is simply kept.
+        var bridgeReady = false
+        if (nativePlayer && documentStartScript && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            bridgeReady = runCatching {
+                WebViewCompat.addWebMessageListener(web, "JellyflixNative", setOf(origin)) { _, message, _, _, _ ->
+                    when (val cmd = message.data?.let { WebPlayerBridge.parse(it, serial + 1) }) {
+                        is BridgeCommand.Play -> { serial = cmd.stream.serial; nativeStream = cmd.stream }
+                        BridgeCommand.Stop -> nativeStream = null
+                        BridgeCommand.Pause -> playerVm?.setPaused(true)
+                        BridgeCommand.Unpause -> playerVm?.setPaused(false)
+                        is BridgeCommand.Seek -> playerVm?.seekToMs(cmd.ms)
+                        is BridgeCommand.Audio -> playerVm?.applyAudio(cmd.index)
+                        is BridgeCommand.Subtitle -> playerVm?.applySubtitle(cmd.index)
+                        BridgeCommand.Quit -> activity?.finish()
+                        null -> Unit
+                    }
+                }
+            }.isSuccess
+        }
+        val appVersion = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "0"
+        val config = WebBootstrap.config(isTv, accent, bridgeReady, profile, deviceId, android.os.Build.MODEL ?: "Android", appVersion)
+        val script = WebBootstrap.fullScript(
+            WebBootstrap.script(serverUrl, serverId, serverName, session.account.userId, session.account.token, deviceId, isTv), config, assetJs,
+        )
 
         web.setBackgroundColor(android.graphics.Color.BLACK)
         web.onMenuKey = onMenu
@@ -220,8 +297,13 @@ private fun WebHost(session: Session, serverId: String, serverName: String, devi
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
         if (loadError != null) ErrorView(loadError, { web.reload() }, Modifier.fillMaxSize())
         else AndroidView(factory = { root }, modifier = Modifier.fillMaxSize())
+        nativeStream?.let { stream ->
+            ExternalPlayerScreen(stream, events, onViewModel = { playerVm = it }, onBack = { nativeStream = null })
+        }
     }
+    // The D-pad goes back to the web page once the player is gone.
+    LaunchedEffect(nativeStream == null) { if (nativeStream == null) web.requestFocus() }
 }

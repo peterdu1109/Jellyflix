@@ -1,5 +1,7 @@
 package dev.jellyflix.ui.web
 
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -38,4 +40,21 @@ class WebBootstrapTest {
         val s = WebBootstrap.script("https://h.tld", "srv1", "n", "u", "t", "d", tv = true)
         assertTrue(s.contains("if (!localStorage.getItem('layout')) localStorage.setItem('layout', 'tv');"))
     }
+
+    @Test fun configCarriesTheAccentAndOnlySendsTheProfileWhenTheNativePlayerIsOn() {
+        val profile = kotlinx.serialization.json.Json.parseToJsonElement("""{"Name":"p"}""")
+        val on = kotlinx.serialization.json.Json.parseToJsonElement(WebBootstrap.config(true, 0xFFAA5CC3.toInt(), true, profile, "d", "TV \"1\"", "0.5")).jsonObject
+        assertEquals("#AA5CC3", on["accent"]!!.jsonPrimitive.content)
+        assertEquals("p", on["deviceProfile"]!!.jsonObject["Name"]!!.jsonPrimitive.content)
+        assertEquals("TV \"1\"", on["deviceName"]!!.jsonPrimitive.content)
+        val off = kotlinx.serialization.json.Json.parseToJsonElement(WebBootstrap.config(false, null, false, profile, "d", "n", "v")).jsonObject
+        assertEquals("#00A4DC", off["accent"]!!.jsonPrimitive.content)
+        assertFalse("deviceProfile" in off)
+    }
+
+    @Test fun fullScriptKeepsTheOrderSessionThenConfigThenAssets() {
+        val full = WebBootstrap.fullScript("A();", "{\"tv\":true}", "B();")
+        assertTrue(full.indexOf("A();") < full.indexOf("window.__JELLYFLIX__ = {\"tv\":true};") && full.indexOf("__JELLYFLIX__") < full.indexOf("B();"))
+    }
 }
+

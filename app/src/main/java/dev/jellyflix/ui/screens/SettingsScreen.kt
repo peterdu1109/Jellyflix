@@ -66,6 +66,15 @@ fun SettingsScreen(settings: AppSettings) {
             }
             Text(stringResource(R.string.interface_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        item {
+            Label(R.string.settings_video_player)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(true to R.string.video_player_native, false to R.string.video_player_browser).forEach { (native, label) ->
+                    FilterChip(settings.nativePlayer == native, { update { it.nativePlayer(native) } }, label = { Text(stringResource(label)) }, modifier = Modifier.focusRing())
+                }
+            }
+            Text(stringResource(R.string.video_player_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         item { HorizontalDivider() }
         item { Header(R.string.settings_appearance) }
         item {

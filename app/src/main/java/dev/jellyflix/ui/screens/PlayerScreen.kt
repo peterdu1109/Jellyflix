@@ -9,7 +9,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.lifecycle.viewModelScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,6 +79,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import dev.jellyflix.R
 import dev.jellyflix.data.QualityCap
+import dev.jellyflix.player.ExternalStream
+import dev.jellyflix.player.PlayerEvents
 import dev.jellyflix.player.PlayerViewModel
 import dev.jellyflix.ui.appViewModel
 import dev.jellyflix.ui.components.focusRing
@@ -82,9 +92,32 @@ import java.util.UUID
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
-    val ctx = LocalContext.current
-    val app = ctx.applicationContext as android.app.Application
+    val app = LocalContext.current.applicationContext as android.app.Application
     val vm = appViewModel(key = "player-$itemId") { PlayerViewModel(app, it, itemId) }
+    PlayerContent(vm, onBack, onNext)
+}
+
+/**
+ * The player on top of the server's web interface, fed with the stream the web client chose. It lives in the
+ * web screen, not in a navigation entry, so it owns a ViewModelStore: clearing it on dispose releases ExoPlayer.
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+fun ExternalPlayerScreen(stream: ExternalStream, events: PlayerEvents, onViewModel: (PlayerViewModel?) -> Unit, onBack: () -> Unit) {
+    val app = LocalContext.current.applicationContext as android.app.Application
+    val owner = remember(stream.serial) { object : androidx.lifecycle.ViewModelStoreOwner { override val viewModelStore = androidx.lifecycle.ViewModelStore() } }
+    DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
+    androidx.compose.runtime.CompositionLocalProvider(androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner provides owner) {
+        val vm = appViewModel(key = "player-ext-${stream.serial}") { PlayerViewModel(app, it, stream.itemId, stream, events) }
+        DisposableEffect(vm) { onViewModel(vm); onDispose { onViewModel(null) } }
+        PlayerContent(vm, onBack = { vm.exitExternal(); onBack() }, onNext = {})
+    }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+private fun PlayerContent(vm: PlayerViewModel, onBack: () -> Unit, onNext: (UUID) -> Unit) {
+    val ctx = LocalContext.current
     val ui by vm.ui.collectAsState()
     val player = vm.player
     val isTv = LocalIsTv.current
@@ -98,6 +131,15 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
     var lastInteraction by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val focus = remember { FocusRequester() }
     val poke = { controls = true; lastInteraction = System.currentTimeMillis() }
+
+    // Seek preview: sheets download in the background as soon as the item is known, so dragging is instant.
+    val tp = remember(ui.item) { if (ui.item != null) vm.trickplay else null }
+    LaunchedEffect(tp) { tp?.prefetch(vm.viewModelScope, vm.positionMs()) }
+    var preview by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(tp, dragging, position / 500) {
+        if (dragging && tp != null) tp.thumbnail(position)?.let { preview = it }
+        if (!dragging) preview = null
+    }
 
     // Immersive fullscreen + landscape + screen on for the whole player lifetime.
     DisposableEffect(Unit) {
@@ -197,6 +239,17 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
                     IconButton({ vm.seekByMs(10_000); poke() }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Forward10, null, tint = Color.White, modifier = Modifier.size(40.dp)) }
                 }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+                    if (dragging && preview != null) {
+                        val frac = if (duration > 0) position.toFloat() / duration else 0f
+                        BoxWithConstraints(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                            val w = 180.dp
+                            val h = w * (tp!!.thumbHeight.toFloat() / tp.thumbWidth.coerceAtLeast(1))
+                            Column(Modifier.offset(x = (maxWidth * frac - w / 2).coerceIn(0.dp, maxWidth - w)).width(w), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Image(preview!!.asImageBitmap(), null, Modifier.size(w, h).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).border(2.dp, Color.White, androidx.compose.foundation.shape.RoundedCornerShape(6.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                                Text(fmt(position), color = Color.White, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
                     Slider(
                         value = if (duration > 0) position.toFloat() / duration else 0f,
                         onValueChange = { dragging = true; position = (it * duration).toLong(); poke() },

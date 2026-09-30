@@ -2,6 +2,9 @@ package dev.jellyflix.ui.web
 
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.net.URI
 
 /**
@@ -58,4 +61,23 @@ object WebBootstrap {
           } catch (e) {}
         })();
     """.trimIndent()
+
+    /** `window.__JELLYFLIX__` for assets/web/jellyflix-web.js. [deviceProfile] is the DeviceProfile as API JSON, or null. */
+    fun config(
+        tv: Boolean, accent: Int?, nativePlayer: Boolean, deviceProfile: JsonElement?,
+        deviceId: String, deviceName: String, appVersion: String,
+    ): String = buildJsonObject {
+        put("tv", tv)
+        // The server theme's accent when it defines one, otherwise Jellyfin blue.
+        put("accent", "#%06X".format((accent ?: 0x00A4DC) and 0xFFFFFF))
+        put("nativePlayer", nativePlayer)
+        if (nativePlayer && deviceProfile != null) put("deviceProfile", deviceProfile)
+        put("deviceId", deviceId)
+        put("deviceName", deviceName)
+        put("appVersion", appVersion)
+    }.toString()
+
+    /** What runs at document start: the signed-in session, then the configuration, then the Jellyflix additions. */
+    fun fullScript(bootstrap: String, configJson: String, asset: String): String =
+        bootstrap + "\n" + "window.__JELLYFLIX__ = " + configJson + ";\n" + asset
 }
