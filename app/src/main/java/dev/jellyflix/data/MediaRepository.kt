@@ -64,6 +64,34 @@ class MediaRepository(private val sessions: SessionManager) {
         userId = uid, limit = limit, addCurrentProgram = true, enableFavoriteSorting = true,
     ).content.items
 
+    /** Programs starting in the next [hours] hours (or already on air) for the given channels, in time order. */
+    suspend fun guide(channelIds: List<UUID>, hours: Long = 12): List<BaseItemDto> {
+        val now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
+        return api.liveTvApi.getPrograms(
+            org.jellyfin.sdk.model.api.GetProgramsDto(
+                channelIds = channelIds, userId = uid, minEndDate = now, maxStartDate = now.plusHours(hours),
+                sortBy = listOf(org.jellyfin.sdk.model.api.ItemSortBy.START_DATE), enableImages = false, limit = 600,
+            ),
+        ).content.items
+    }
+
+    /** Scheduled recordings (timers) with their program. */
+    suspend fun timers(): List<org.jellyfin.sdk.model.api.TimerInfoDto> = api.liveTvApi.getTimers().content.items
+
+    /** Records [programId] with the server's default padding/keep settings (same as the web client). */
+    suspend fun scheduleRecording(programId: String) {
+        val d = api.liveTvApi.getDefaultTimer(programId).content
+        api.liveTvApi.createTimer(
+            org.jellyfin.sdk.model.api.TimerInfoDto(
+                programId = programId, channelId = d.channelId, name = d.name, overview = d.overview,
+                startDate = d.startDate, endDate = d.endDate, serviceName = d.serviceName, priority = d.priority,
+                prePaddingSeconds = d.prePaddingSeconds, postPaddingSeconds = d.postPaddingSeconds, keepUntil = d.keepUntil,
+            ),
+        )
+    }
+
+    suspend fun cancelTimer(id: String) { api.liveTvApi.cancelTimer(id) }
+
     suspend fun recordings(): List<BaseItemDto> = api.liveTvApi.getRecordings(userId = uid).content.items
 
     /** Channels with what's on right now; empty when the server has no Live TV. */

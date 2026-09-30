@@ -191,7 +191,7 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                                     Text(stringResource(if (resume) R.string.resume else R.string.play), Modifier.padding(start = 6.dp))
                                 }
                             }
-                            DownloadButton(item, d.episodes)
+                            DownloadButton(item, d.episodes, d.tracks)
                             FilledTonalIconButton(vm::togglePlayed, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) {
                                 Icon(Icons.Default.Check, stringResource(R.string.mark_watched), tint = if (item.userData?.played == true) MaterialTheme.colorScheme.primary else LocalContentColorFallback())
                             }
@@ -256,11 +256,12 @@ private fun EpisodeRow(ep: BaseItemDto, onPlay: () -> Unit, repo: MediaRepositor
  * Asks for the notification permission first on Android 13+ (the download runs as a foreground service).
  */
 @Composable
-private fun DownloadButton(item: BaseItemDto, episodes: List<BaseItemDto>) {
+private fun DownloadButton(item: BaseItemDto, episodes: List<BaseItemDto>, tracks: List<BaseItemDto>) {
     val downloads = rememberContainer().downloads
     val all by downloads.entries.collectAsState()
     val targets = when (item.type) {
         BaseItemKind.SERIES, BaseItemKind.SEASON -> episodes.filter { it.type == BaseItemKind.EPISODE }
+        BaseItemKind.MUSIC_ALBUM, BaseItemKind.PLAYLIST -> tracks.filter { it.type == BaseItemKind.AUDIO }
         else -> listOf(item)
     }
     if (targets.isEmpty()) return

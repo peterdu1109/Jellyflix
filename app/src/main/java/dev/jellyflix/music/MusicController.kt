@@ -54,6 +54,7 @@ class MusicController(
     private val context: Context,
     private val sessions: SessionManager,
     private val repo: MediaRepository,
+    private val downloads: dev.jellyflix.download.DownloadRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(MusicState())
@@ -149,7 +150,9 @@ class MusicController(
     private fun mediaItem(item: BaseItemDto): MediaItem? {
         val s = sessions.current ?: return null
         val base = s.account.serverUrl.trimEnd('/')
-        val url = "$base/Audio/${item.id}/universal?UserId=${s.account.userId}&DeviceId=${Uri.encode(s.api.deviceInfo.id)}" +
+        // A downloaded track plays from the file, so it works without a connection.
+        val local = downloads.playable(item.id)?.let { downloads.videoFile(it) }
+        val url = if (local != null) Uri.fromFile(local).toString() else "$base/Audio/${item.id}/universal?UserId=${s.account.userId}&DeviceId=${Uri.encode(s.api.deviceInfo.id)}" +
             "&MaxStreamingBitrate=140000000&Container=mp3,aac,m4a,flac,ogg,wav,opus,webma" +
             "&TranscodingContainer=ts&TranscodingProtocol=hls&AudioCodec=aac&api_key=${Uri.encode(s.account.token)}"
         val art = repo.imageUrl(item, ImageType.PRIMARY, 600)
