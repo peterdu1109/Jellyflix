@@ -32,14 +32,15 @@ Il reprend l'essentiel de l'app officielle, mais avec un design moderne, des **t
 
 > Prérequis : Android 8.0 ou plus, serveur Jellyfin 10.10 ou plus récent.
 
-Une nouvelle release est publiée **automatiquement** à chaque nouvelle version poussée sur `main`.
+Un APK est publié **automatiquement à chaque push sur `main`** : la page *Releases* (et le lien `releases/latest`) donne toujours le plus récent. Chaque pull request obtient aussi un APK de test, dont le lien est posté en commentaire.
 
 ## ✨ Fonctionnalités
 
 | | |
 |---|---|
 | 🔐 **Connexion** | Détection de l'adresse (http/https, port), mot de passe, Quick Connect, plusieurs comptes |
-| 🪞 **Fidèle au serveur** | Reprend l'organisation configurée sur Jellyfin : ordre des sections d'accueil, bibliothèques masquées ou réordonnées, thème du serveur, pistes audio et sous-titres par défaut, pastilles « non vus » |
+| 🌐 **Interface du serveur** | Par défaut, l'app affiche **l'interface web de votre Jellyfin elle-même**, connectée automatiquement : même thème, même CSS personnalisé, mêmes plugins (Media Bar, Home Screen Sections, JavaScript Injector…), avec la disposition TV du client web sur Android TV. Bascule vers l'interface native dans Réglages → Interface, ou via le menu (touche Menu de la télécommande, ou Retour à la racine) |
+| 🪞 **Fidèle au serveur** (interface native) | Reprend l'organisation configurée sur Jellyfin : ordre des sections d'accueil, bibliothèques masquées ou réordonnées, thème du serveur, pistes audio et sous-titres par défaut, pastilles « non vus » |
 | 🏠 **Accueil** | Reprendre la lecture / l'écoute, À suivre, Télé en direct, Derniers ajouts par bibliothèque, Favoris |
 | 📚 **Bibliothèques** | Grille paginée, tri, contenu adapté au type (films, séries, musique, playlists, collections) |
 | 🎬 **Fiches** | Films, séries, saisons, épisodes, distribution et filmographie, similaires, vu / favori |
@@ -100,11 +101,22 @@ Kotlin, Jetpack Compose, Media3, Coil, SDK officiel `org.jellyfin.sdk`, DataStor
 </details>
 
 <details>
-<summary><b>Publier une nouvelle version</b></summary>
+<summary><b>Publier une nouvelle version et signer l'APK</b></summary>
 
-Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis poussez sur `main` : le workflow *Release* compile l'APK et crée la release `vX.Y.Z` avec ses notes.
+Poussez sur `main` : le workflow *Release* lance les tests, compile l'APK, vérifie sa signature et crée la release, sans rien d'autre à faire.
 
-Pour une signature stable (mises à jour sans désinstaller), ajoutez les secrets du dépôt `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD`. Sans eux, l'APK est signé avec la clé de debug.
+- Première publication d'une `versionName` (dans `app/build.gradle.kts`) : tag `vX.Y.Z`.
+- Pushes suivants avec la même `versionName` : tag `vX.Y.Z-build.N`. Le `versionCode` augmente à chaque build, donc chaque APK s'installe par-dessus le précédent (avec la signature stable).
+- Pour une nouvelle version « officielle », changez seulement `versionName`.
+- APK de test des PR : identifiant `dev.jellyflix.debug`, il s'installe à côté de la version publiée.
+
+**Signature stable** (pour que les mises à jour s'installent par-dessus sans désinstaller) :
+
+1. Générez la clé : `scripts/create-keystore.sh` (ou utilisez la vôtre).
+2. Dans le dépôt GitHub : *Settings → Secrets and variables → Actions*, créez `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD` avec les valeurs générées.
+3. Sauvegardez la clé : si elle est perdue, plus aucune mise à jour ne pourra s'installer sur les versions déjà signées avec elle.
+
+Le résumé de chaque release affiche l'empreinte du certificat et indique si la clé stable a bien été utilisée. Sans secrets, l'APK est signé avec la clé de debug (les mises à jour exigent alors de désinstaller l'ancienne version).
 </details>
 
 ## 🔒 Sécurité
@@ -113,6 +125,7 @@ Les jetons de connexion sont **chiffrés** (AES-256-GCM) avec une clé stockée 
 
 ## ⚠️ Limites actuelles
 
+- **Interface du serveur** : c'est le client web de Jellyfin dans une WebView, la lecture y passe donc par le moteur web (davantage de transcodage qu'avec le lecteur natif). Téléchargements hors-ligne, lecteur de musique en arrière-plan et Chromecast n'existent que dans l'interface native.
 - **Téléchargements** : le fichier original est téléchargé (le compte doit avoir le droit de téléchargement sur le serveur) ; les sous-titres externes ne sont pas inclus, seuls ceux intégrés à la vidéo fonctionnent hors-ligne. Pas de téléchargement de musique.
 - **Chromecast** : nécessite un téléphone avec les services Google Play et un serveur joignable depuis l'appareil Cast. Le bouton est masqué sur Android TV et si Cast est indisponible.
 - **Télé en direct** : lecture des chaînes et des enregistrements ; pas de programmation d'enregistrements ni de grille horaire complète.

@@ -13,8 +13,9 @@ android {
         applicationId = "dev.jellyflix"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        // CI passes a growing number so every published APK can update the previous one; local builds keep 4.
+        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 4
+        versionName = "0.4.0"
     }
 
     // Release signing comes from CI secrets; without them the build falls back to the debug key (local builds).
@@ -29,6 +30,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Test APKs (PR builds) install next to the published app instead of clashing with its signature.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -67,6 +73,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.cast)
+    implementation(libs.androidx.webkit)
     implementation(libs.cast.framework)
     implementation(libs.androidx.mediarouter)
 
