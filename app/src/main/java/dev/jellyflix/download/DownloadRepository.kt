@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import org.jellyfin.sdk.api.client.extensions.playStateApi
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.MediaStreamType
 import org.jellyfin.sdk.model.api.PlaybackStopInfo
 import java.io.File
 import java.io.IOException
@@ -84,6 +85,9 @@ class DownloadRepository(
 
     fun entry(id: UUID): DownloadEntry? = _entries.value[id.toString()]
     fun videoFile(e: DownloadEntry) = File(File(root, e.id), e.fileName)
+    /** A downloaded external subtitle file for stream [index], if any. */
+    fun subtitleFile(e: DownloadEntry, index: Int): File? =
+        File(root, e.id).listFiles { f -> f.name.startsWith("sub_$index.") }?.firstOrNull()
     fun posterFile(e: DownloadEntry) = File(File(root, e.id), "poster.jpg").takeIf { it.exists() }
 
     /** A finished download of the signed-in account whose file is still on disk. */
@@ -183,6 +187,21 @@ class DownloadRepository(
             val url = "$base/Items/${start.id}/Images/Primary?maxWidth=400&quality=85&api_key=${Uri.encode(token)}"
             (URL(url).openConnection() as HttpURLConnection).also { it.setRequestProperty("X-Emby-Token", token) }
                 .inputStream.use { input -> File(dir, "poster.jpg").outputStream().use { input.copyTo(it) } }
+        }
+
+        // External text subtitles are small: fetch them first, best effort (the video matters more).
+        val src = start.item.mediaSources?.firstOrNull()
+        src?.mediaStreams.orEmpty().filter { it.type == MediaStreamType.SUBTITLE && it.isExternal && it.isTextSubtitleStream }.forEach { st ->
+            val ext = if (st.codec.equals("ass", true) || st.codec.equals("ssa", true)) "ass" else "srt"
+            val file = File(dir, "sub_${st.index}.$ext")
+            if (!file.exists()) runCatching {
+                val url = "$base/Videos/${start.id}/${src?.id ?: start.id}/Subtitles/${st.index}/0/Stream.$ext"
+                val c = URL(url).openConnection() as HttpURLConnection
+                c.setRequestProperty("X-Emby-Token", token); c.connectTimeout = 10_000; c.readTimeout = 20_000
+                try {
+                    if (c.responseCode == 200) { val tmp = File(dir, file.name + ".tmp"); c.inputStream.use { i -> tmp.outputStream().use { i.copyTo(it) } }; tmp.renameTo(file) }
+                } finally { c.disconnect() }
+            }
         }
 
         val part = File(dir, start.fileName + ".part")

@@ -331,8 +331,14 @@ class PlayerViewModel(
         source = src
         val streams = src?.mediaStreams.orEmpty()
         val audio = streams.filter { it.type == MediaStreamType.AUDIO }
-        // External subtitle files aren't downloaded; embedded ones live inside the video file.
-        val subs = streams.filter { it.type == MediaStreamType.SUBTITLE && !it.isExternal }
+        // Embedded subtitles live inside the video file; external ones are available when their file was downloaded.
+        val subs = streams.filter { it.type == MediaStreamType.SUBTITLE && (!it.isExternal || container.downloads.subtitleFile(entry, it.index) != null) }
+        val sidecars = subs.filter { it.isExternal }.mapNotNull { st ->
+            val f = container.downloads.subtitleFile(entry, st.index) ?: return@mapNotNull null
+            MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(f))
+                .setId("ext${st.index}").setMimeType(if (f.extension == "ass") MimeTypes.TEXT_SSA else MimeTypes.APPLICATION_SUBRIP)
+                .setLanguage(st.language).setLabel(st.label()).setSelectionFlags(0).build()
+        }
         val audioIdx = src?.defaultAudioStreamIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
         val subIdx = src?.defaultSubtitleStreamIndex?.takeIf { d -> d >= 0 && subs.any { it.index == d } }
         val resumeMs = maxOf(entry.positionTicks, item.userData?.playbackPositionTicks ?: 0L) / 10_000
@@ -343,7 +349,7 @@ class PlayerViewModel(
                 audio = audio.map { s -> TrackOption(s.index, s.label()) }, subtitles = subs.map { s -> TrackOption(s.index, s.label()) },
             )
         }
-        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(container.downloads.videoFile(entry))), startMs)
+        player.setMediaItem(MediaItem.Builder().setUri(Uri.fromFile(container.downloads.videoFile(entry))).setSubtitleConfigurations(sidecars).build(), startMs)
         player.prepare()
         player.playWhenReady = true
         applyClientTrackSelection(audioIdx, subIdx)
@@ -504,7 +510,7 @@ class PlayerViewModel(
                 if (subIndex != null) {
                     val textGroups = groups.filter { it.type == C.TRACK_TYPE_TEXT }
                     val ext = textGroups.firstOrNull { g -> (0 until g.length).any { g.getTrackFormat(it).id?.endsWith("ext$subIndex") == true } }
-                    val embeddedOrdinal = streams.filter { it.type == MediaStreamType.SUBTITLE && it.deliveryMethod != SubtitleDeliveryMethod.EXTERNAL }.indexOfFirst { it.index == subIndex }
+                    val embeddedOrdinal = streams.filter { it.type == MediaStreamType.SUBTITLE && it.deliveryMethod != SubtitleDeliveryMethod.EXTERNAL && !it.isExternal }.indexOfFirst { it.index == subIndex }
                     val target = ext ?: textGroups.filter { g -> (0 until g.length).none { g.getTrackFormat(it).id?.contains("ext") == true } }.getOrNull(embeddedOrdinal)
                     if (target != null) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                         .setOverrideForType(TrackSelectionOverride(target.mediaTrackGroup, 0)).build()
