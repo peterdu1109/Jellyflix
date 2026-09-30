@@ -53,6 +53,8 @@ fun SettingsScreen(settings: AppSettings) {
     var serverPlugins by remember { mutableStateOf<List<PluginInfo>?>(null) }
     LaunchedEffect(Unit) { serverPlugins = runCatching { c.repository.serverPlugins() }.getOrDefault(emptyList()) }
     val accounts by c.session.accounts.collectAsState()
+    var showDiagnostics by remember { mutableStateOf(false) }
+    if (showDiagnostics) dev.jellyflix.ui.components.DiagnosticsDialog { showDiagnostics = false }
 
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Header(R.string.settings_interface) }
@@ -142,6 +144,9 @@ fun SettingsScreen(settings: AppSettings) {
                 }
             }
         }
+        item { HorizontalDivider() }
+
+        item { OutlinedButton({ showDiagnostics = true }, Modifier.focusRing()) { Text(stringResource(R.string.diagnostics_title)) } }
         item { HorizontalDivider() }
 
         item { Header(R.string.settings_downloads) }

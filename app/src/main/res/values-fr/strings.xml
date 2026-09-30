@@ -113,4 +113,6 @@
     <string name="video_player_native">Lecteur de l\'appareil (décodage matériel)</string>
     <string name="video_player_browser">Lecteur du navigateur</string>
     <string name="video_player_hint">Le lecteur de l\'appareil utilise les décodeurs de votre TV ou téléphone quand ils savent lire la vidéo, et ne demande au serveur de la convertir que s\'ils ne le peuvent pas.</string>
+    <string name="diagnostics_title">Diagnostic de l\'appareil</string>
+    <string name="diagnostics_copy">Copier</string>
 </resources>

@@ -114,4 +114,6 @@
     <string name="video_player_native">Device player (hardware decoding)</string>
     <string name="video_player_browser">Browser player</string>
     <string name="video_player_hint">The device player uses your TV or phone\'s own decoders when they can read the video, and asks the server to convert it only when they can\'t.</string>
+    <string name="diagnostics_title">Device diagnostics</string>
+    <string name="diagnostics_copy">Copy</string>
 </resources>
