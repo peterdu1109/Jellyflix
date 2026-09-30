@@ -42,7 +42,9 @@ object DeviceProfiles {
             ),
             transcodingProfiles = listOf(
                 TranscodingProfile(
-                    container = "ts", type = DlnaProfileType.VIDEO, videoCodec = "h264", audioCodec = if (castReceiver) "aac" else "aac,mp3,ac3,eac3".let { c ->
+                    container = "ts", type = DlnaProfileType.VIDEO,
+                    // HEVC is allowed too when the device decodes it: a file that only needs a new audio track keeps its video stream.
+                    videoCodec = if (!castReceiver && "hevc" in video) "hevc,h264" else "h264", audioCodec = if (castReceiver) "aac" else "aac,mp3,ac3,eac3".let { c ->
                         if (audio.contains("ac3")) c else "aac,mp3"
                     },
                     protocol = MediaStreamProtocol.HLS, context = EncodingContext.STREAMING,
