@@ -8,6 +8,10 @@ import org.jellyfin.sdk.api.client.extensions.playStateApi
 import org.jellyfin.sdk.api.client.extensions.tvShowsApi
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.api.client.extensions.userViewsApi
+import org.jellyfin.sdk.api.client.extensions.userApi
+import org.jellyfin.sdk.api.client.extensions.artistsApi
+import org.jellyfin.sdk.api.client.extensions.liveTvApi
+import org.jellyfin.sdk.api.client.extensions.displayPreferencesApi
 import org.jellyfin.sdk.api.client.extensions.pluginsApi
 import org.jellyfin.sdk.model.api.BaseItemDto
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -20,6 +24,19 @@ import java.util.UUID
 
 data class Page(val items: List<BaseItemDto>, val total: Int)
 
+/** How the server (per user) wants the client to lay things out: home sections order and library visibility. */
+data class UserLayout(
+    val homeSections: List<String>,
+    val orderedViews: List<UUID>,
+    val hiddenViews: Set<UUID>,
+    val hiddenLatest: Set<UUID>,
+) {
+    companion object {
+        /** Same defaults as the Jellyfin web client when the user never customised the home screen. */
+        val DefaultSections = listOf("smalllibrarytiles", "resume", "resumeaudio", "resumebook", "livetv", "nextup", "latestmedia", "none")
+    }
+}
+
 private val CARD_FIELDS = listOf(ItemFields.OVERVIEW, ItemFields.PRIMARY_IMAGE_ASPECT_RATIO)
 
 /** All server reads/writes used by the UI. Throws on failure; ViewModels wrap calls in [runCatching]. */
@@ -29,6 +46,34 @@ class MediaRepository(private val sessions: SessionManager) {
     private val uid get() = s.userId
 
     suspend fun views(): List<BaseItemDto> = api.userViewsApi.getUserViews(userId = uid).content.items
+
+    /** Reads the user's server-side configuration; any failure falls back to the web client defaults. */
+    suspend fun userLayout(): UserLayout {
+        val config = runCatching { api.userApi.getCurrentUser().content.configuration }.getOrNull()
+        val prefs = runCatching { api.displayPreferencesApi.getDisplayPreferences("usersettings", uid, "emby").content.customPrefs }.getOrNull().orEmpty()
+        val sections = (0..9).mapNotNull { prefs["homesection$it"]?.lowercase() }.ifEmpty { UserLayout.DefaultSections }
+        return UserLayout(
+            homeSections = sections,
+            orderedViews = config?.orderedViews.orEmpty(),
+            hiddenViews = config?.myMediaExcludes.orEmpty().toSet(),
+            hiddenLatest = config?.latestItemsExcludes.orEmpty().toSet(),
+        )
+    }
+
+    suspend fun liveChannels(limit: Int = 200): List<BaseItemDto> = api.liveTvApi.getLiveTvChannels(
+        userId = uid, limit = limit, addCurrentProgram = true, enableFavoriteSorting = true,
+    ).content.items
+
+    suspend fun recordings(): List<BaseItemDto> = api.liveTvApi.getRecordings(userId = uid).content.items
+
+    /** Channels with what's on right now; empty when the server has no Live TV. */
+    suspend fun liveTvNow(): List<BaseItemDto> = api.liveTvApi.getLiveTvChannels(
+        userId = uid, limit = 20, addCurrentProgram = true, enableFavoriteSorting = true,
+    ).content.items
+
+    suspend fun resumeAudio(): List<BaseItemDto> = api.itemsApi.getResumeItems(
+        userId = uid, limit = 20, fields = CARD_FIELDS, mediaTypes = listOf(org.jellyfin.sdk.model.api.MediaType.AUDIO),
+    ).content.items
 
     suspend fun resume(): List<BaseItemDto> = api.itemsApi.getResumeItems(
         userId = uid, limit = 20, fields = CARD_FIELDS,
@@ -55,6 +100,30 @@ class MediaRepository(private val sessions: SessionManager) {
         ).content
         return Page(r.items, r.totalRecordCount)
     }
+
+    /** Album tracks in disc/track order, or a playlist in its own order. */
+    suspend fun tracks(parentId: UUID, playlistOrder: Boolean): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, parentId = parentId, recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.AUDIO),
+        sortBy = if (playlistOrder) null else listOf(ItemSortBy.PARENT_INDEX_NUMBER, ItemSortBy.INDEX_NUMBER, ItemSortBy.SORT_NAME),
+    ).content.items
+
+    suspend fun albumsOfArtist(artistId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, albumArtistIds = listOf(artistId), recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.MUSIC_ALBUM), sortBy = listOf(ItemSortBy.PRODUCTION_YEAR, ItemSortBy.SORT_NAME), sortOrder = listOf(SortOrder.DESCENDING),
+    ).content.items
+
+    suspend fun browseArtists(parentId: UUID?, start: Int, limit: Int = 60): Page {
+        val r = api.artistsApi.getAlbumArtists(userId = uid, parentId = parentId, startIndex = start, limit = limit, fields = CARD_FIELDS, sortBy = listOf(ItemSortBy.SORT_NAME)).content
+        return Page(r.items, r.totalRecordCount)
+    }
+
+    /** Everything a person (actor, director…) appears in. */
+    suspend fun filmography(personId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
+        userId = uid, personIds = listOf(personId), recursive = true, fields = CARD_FIELDS,
+        includeItemTypes = listOf(BaseItemKind.MOVIE, BaseItemKind.SERIES),
+        sortBy = listOf(ItemSortBy.PREMIERE_DATE), sortOrder = listOf(SortOrder.DESCENDING),
+    ).content.items
 
     suspend fun children(parentId: UUID): List<BaseItemDto> = api.itemsApi.getItems(
         userId = uid, parentId = parentId, sortBy = listOf(ItemSortBy.SORT_NAME), fields = CARD_FIELDS,

@@ -122,7 +122,13 @@ fun MediaCard(
             if (url != null) AsyncImage(model = url, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             else Text(item.name.orEmpty(), Modifier.align(Alignment.Center).padding(8.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge)
             val data = item.userData
-            if (data?.played == true) {
+            val unplayed = data?.unplayedItemCount ?: 0
+            if (unplayed > 0 && item.type in setOf(BaseItemKind.SERIES, BaseItemKind.SEASON, BaseItemKind.BOX_SET)) {
+                Text(
+                    unplayed.toString(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                )
+            } else if (data?.played == true) {
                 Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp))
             }
             val pct = data?.playedPercentage
@@ -146,6 +152,8 @@ fun cardSubtitle(item: BaseItemDto): String? = when (item.type) {
     BaseItemKind.EPISODE -> listOfNotNull(
         item.parentIndexNumber?.let { "S$it" }, item.indexNumber?.let { "E$it" },
     ).joinToString("").takeIf { it.isNotEmpty() }?.let { "$it · ${item.name}" } ?: item.name
+    BaseItemKind.TV_CHANNEL -> item.currentProgram?.name
+    BaseItemKind.PROGRAM -> item.channelName
     else -> item.productionYear?.toString()
 }
 

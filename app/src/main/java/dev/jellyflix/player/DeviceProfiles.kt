@@ -17,7 +17,8 @@ object DeviceProfiles {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { !it.isEncoder && it.supportedTypes.any { t -> t.equals(mime, ignoreCase = true) } }
     }.getOrDefault(false)
 
-    fun build(maxBitrate: Int?): DeviceProfile {
+    /** [burnInSubtitles]: every subtitle is rendered into the video by the server (needed for transcoded streams). */
+    fun build(maxBitrate: Int?, burnInSubtitles: Boolean = false, castReceiver: Boolean = false): DeviceProfile {
         val video = buildList {
             add("h264")
             if (hasDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)) { add("hevc"); add("h265") }
@@ -36,24 +37,28 @@ object DeviceProfiles {
             maxStreamingBitrate = maxBitrate ?: 120_000_000,
             maxStaticBitrate = 120_000_000,
             musicStreamingTranscodingBitrate = 192_000,
-            directPlayProfiles = if (maxBitrate != null) emptyList() else listOf(
+            directPlayProfiles = if (maxBitrate != null || castReceiver) emptyList() else listOf(
                 DirectPlayProfile(container = "mp4,m4v,mkv,webm", audioCodec = audio.joinToString(","), videoCodec = video.joinToString(","), type = DlnaProfileType.VIDEO),
             ),
             transcodingProfiles = listOf(
                 TranscodingProfile(
-                    container = "ts", type = DlnaProfileType.VIDEO, videoCodec = "h264", audioCodec = "aac,mp3,ac3,eac3".let { c ->
+                    container = "ts", type = DlnaProfileType.VIDEO, videoCodec = "h264", audioCodec = if (castReceiver) "aac" else "aac,mp3,ac3,eac3".let { c ->
                         if (audio.contains("ac3")) c else "aac,mp3"
                     },
                     protocol = MediaStreamProtocol.HLS, context = EncodingContext.STREAMING,
-                    maxAudioChannels = "6", minSegments = 1, breakOnNonKeyFrames = true, copyTimestamps = false,
+                    maxAudioChannels = if (castReceiver) "2" else "6", minSegments = 1, breakOnNonKeyFrames = true, copyTimestamps = false,
                     enableMpegtsM2TsMode = false, transcodeSeekInfo = org.jellyfin.sdk.model.api.TranscodeSeekInfo.AUTO,
                     estimateContentLength = false, enableSubtitlesInManifest = false, conditions = emptyList(),
                 ),
             ),
             containerProfiles = emptyList(),
             codecProfiles = emptyList(),
-            subtitleProfiles = textSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.EXTERNAL) } +
-                imageSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) },
+            subtitleProfiles = if (burnInSubtitles || castReceiver) {
+                (textSubs + imageSubs).map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) }
+            } else {
+                textSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.EXTERNAL) } +
+                    imageSubs.map { SubtitleProfile(format = it, method = SubtitleDeliveryMethod.ENCODE) }
+            },
         )
     }
 }

@@ -11,12 +11,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
@@ -71,6 +77,8 @@ data class DetailData(
     val similar: List<BaseItemDto> = emptyList(),
     /** Episode/movie to start when pressing Play (next unwatched episode for a series). */
     val playTarget: BaseItemDto? = null,
+    val tracks: List<BaseItemDto> = emptyList(),
+    val albums: List<BaseItemDto> = emptyList(),
 )
 
 class DetailViewModel(private val repo: MediaRepository, private val id: UUID) : ViewModel() {
@@ -98,6 +106,12 @@ class DetailViewModel(private val repo: MediaRepository, private val id: UUID) :
                             val eps = repo.episodes(item.seriesId ?: id, id)
                             DetailData(item, episodes = eps, playTarget = eps.firstOrNull { it.userData?.played != true } ?: eps.firstOrNull())
                         }
+                        BaseItemKind.MUSIC_ALBUM -> DetailData(item, tracks = repo.tracks(id, playlistOrder = false), similar = similar.await())
+                        BaseItemKind.PLAYLIST -> if (item.mediaType == org.jellyfin.sdk.model.api.MediaType.AUDIO) DetailData(item, tracks = repo.tracks(id, playlistOrder = true))
+                            else DetailData(item, episodes = repo.children(id))
+                        BaseItemKind.PERSON -> DetailData(item, albums = repo.filmography(id))
+                        BaseItemKind.MUSIC_ARTIST -> DetailData(item, albums = repo.albumsOfArtist(id))
+                        BaseItemKind.AUDIO -> DetailData(item, tracks = listOf(item))
                         BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO -> DetailData(item, similar = similar.await(), playTarget = item)
                         else -> DetailData(item, episodes = repo.children(id), similar = emptyList())
                     }
@@ -131,7 +145,7 @@ class DetailViewModel(private val repo: MediaRepository, private val id: UUID) :
 }
 
 @Composable
-fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit) {
+fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, onPlay: (BaseItemDto) -> Unit, onPlayTracks: (List<BaseItemDto>, Int, Boolean) -> Unit = { _, _, _ -> }) {
     val vm = appViewModel(key = "detail-$id") { DetailViewModel(it.repository, id) }
     val repo = rememberContainer().repository
     val state by vm.state.collectAsState()
@@ -148,6 +162,24 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                         Text(item.name.orEmpty(), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.align(Alignment.BottomStart).padding(16.dp))
                     }
                 }
+                if (d.tracks.isNotEmpty()) {
+                    item {
+                        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button({ onPlayTracks(d.tracks, 0, false) }, Modifier.focusRing()) { Icon(Icons.Default.PlayArrow, null); Text(stringResource(R.string.play_all), Modifier.padding(start = 6.dp)) }
+                            androidx.compose.material3.OutlinedButton({ onPlayTracks(d.tracks, 0, true) }, Modifier.focusRing()) { Text(stringResource(R.string.shuffle)) }
+                        }
+                    }
+                    itemsIndexed(d.tracks, key = { _, t -> t.id }) { i, t -> TrackRow(i, t) { onPlayTracks(d.tracks, i, false) } }
+                }
+                if (d.albums.isNotEmpty()) item { ItemRow(stringResource(if (item.type == BaseItemKind.PERSON) R.string.filmography else R.string.albums), d.albums, repo, onOpen) }
+                val cast = item.people.orEmpty().filter { it.id != null && it.type in setOf(org.jellyfin.sdk.model.api.PersonKind.ACTOR, org.jellyfin.sdk.model.api.PersonKind.DIRECTOR) }.take(20)
+                if (cast.isNotEmpty() && item.type != BaseItemKind.PERSON) item {
+                    // People become minimal items so they reuse the same card (and open the person page).
+                    ItemRow(stringResource(R.string.cast), cast.map { p ->
+                        BaseItemDto(id = p.id, type = BaseItemKind.PERSON, name = p.name, productionYear = null,
+                            imageTags = p.primaryImageTag?.let { mapOf(ImageType.PRIMARY to it) })
+                    }, repo, onOpen)
+                }
                 item {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         MetaLine(item)
@@ -159,6 +191,7 @@ fun DetailScreen(id: UUID, onBack: () -> Unit, onOpen: (BaseItemDto) -> Unit, on
                                     Text(stringResource(if (resume) R.string.resume else R.string.play), Modifier.padding(start = 6.dp))
                                 }
                             }
+                            DownloadButton(item, d.episodes)
                             FilledTonalIconButton(vm::togglePlayed, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) {
                                 Icon(Icons.Default.Check, stringResource(R.string.mark_watched), tint = if (item.userData?.played == true) MaterialTheme.colorScheme.primary else LocalContentColorFallback())
                             }
@@ -215,5 +248,57 @@ private fun EpisodeRow(ep: BaseItemDto, onPlay: () -> Unit, repo: MediaRepositor
             formatRuntime(ep.runTimeTicks)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             ep.overview?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
         }
+    }
+}
+
+/**
+ * Movie/episode: download, show progress, or mark as downloaded. Series/season: download every episode listed.
+ * Asks for the notification permission first on Android 13+ (the download runs as a foreground service).
+ */
+@Composable
+private fun DownloadButton(item: BaseItemDto, episodes: List<BaseItemDto>) {
+    val downloads = rememberContainer().downloads
+    val all by downloads.entries.collectAsState()
+    val targets = when (item.type) {
+        BaseItemKind.SERIES, BaseItemKind.SEASON -> episodes.filter { it.type == BaseItemKind.EPISODE }
+        else -> listOf(item)
+    }
+    if (targets.isEmpty()) return
+    val states = targets.mapNotNull { all[it.id.toString()]?.status }
+    val allDone = states.size == targets.size && states.all { it == dev.jellyflix.download.DownloadStatus.COMPLETE }
+    val active = states.any { it == dev.jellyflix.download.DownloadStatus.DOWNLOADING || it == dev.jellyflix.download.DownloadStatus.QUEUED }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {
+        downloads.enqueue(targets) // download even if notifications were declined
+    }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    FilledTonalIconButton(
+        {
+            if (allDone || active) return@FilledTonalIconButton
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS) else downloads.enqueue(targets)
+        },
+        Modifier.focusRing(androidx.compose.foundation.shape.CircleShape),
+    ) {
+        when {
+            allDone -> Icon(Icons.Default.DownloadDone, stringResource(R.string.downloaded), tint = MaterialTheme.colorScheme.primary)
+            active -> androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            else -> Icon(Icons.Default.Download, stringResource(if (targets.size > 1) R.string.download_season else R.string.download))
+        }
+    }
+}
+
+@Composable
+private fun TrackRow(index: Int, track: BaseItemDto, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).focusRing().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${track.indexNumber ?: (index + 1)}", Modifier.width(28.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) {
+            Text(track.name.orEmpty(), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            (track.artists?.joinToString(", ") ?: track.albumArtist)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+        }
+        formatRuntime(track.runTimeTicks)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }

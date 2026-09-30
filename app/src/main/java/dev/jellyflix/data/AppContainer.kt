@@ -19,7 +19,7 @@ class AppContainer(context: Context) {
     val plugins = BuiltInPlugins.create()
 
     val jellyfin: Jellyfin = createJellyfin {
-        clientInfo = ClientInfo(name = "Jellyflix", version = "0.1.0")
+        clientInfo = ClientInfo(name = "Jellyflix", version = "0.3.0")
         deviceInfo = DeviceInfo(
             id = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "jellyflix-device",
             name = Build.MODEL ?: "Android",
@@ -29,4 +29,7 @@ class AppContainer(context: Context) {
 
     val session = SessionManager(jellyfin, settings, appScope)
     val repository = MediaRepository(session)
+    val music = dev.jellyflix.music.MusicController(context.applicationContext, session, repository)
+    val downloads = dev.jellyflix.download.DownloadRepository(context.applicationContext, session, settings, appScope)
+    val serverTheme = ServerThemeRepository(session)
 }

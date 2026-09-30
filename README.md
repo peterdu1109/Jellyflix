@@ -39,13 +39,18 @@ Une nouvelle release est publiée **automatiquement** à chaque nouvelle version
 | | |
 |---|---|
 | 🔐 **Connexion** | Détection de l'adresse (http/https, port), mot de passe, Quick Connect, plusieurs comptes |
-| 🏠 **Accueil** | Reprendre la lecture, À suivre, Favoris, Derniers ajouts par bibliothèque |
-| 📚 **Bibliothèques** | Grille paginée, tri par nom, ajout, année ou note |
-| 🎬 **Fiches** | Films, séries, saisons, épisodes, similaires, vu / favori |
+| 🪞 **Fidèle au serveur** | Reprend l'organisation configurée sur Jellyfin : ordre des sections d'accueil, bibliothèques masquées ou réordonnées, thème du serveur, pistes audio et sous-titres par défaut, pastilles « non vus » |
+| 🏠 **Accueil** | Reprendre la lecture / l'écoute, À suivre, Télé en direct, Derniers ajouts par bibliothèque, Favoris |
+| 📚 **Bibliothèques** | Grille paginée, tri, contenu adapté au type (films, séries, musique, playlists, collections) |
+| 🎬 **Fiches** | Films, séries, saisons, épisodes, distribution et filmographie, similaires, vu / favori |
+| ⬇️ **Hors-ligne** | Téléchargement de films, épisodes et saisons entières, reprise après coupure, Wi‑Fi uniquement (réglable), lecture sans réseau, progression renvoyée au serveur au retour du réseau |
+| 🎵 **Musique** | Albums, artistes, titres, playlists, lecture en arrière-plan avec notification et contrôles écran verrouillé, file d'attente, aléatoire, répétition |
+| 📡 **Télé en direct** | Chaînes avec programme en cours, enregistrements, libération du tuner à la fermeture |
+| 📺 **Chromecast** | Diffusion depuis le lecteur vidéo (transcodage H.264/AAC par le serveur) |
 | 🔎 **Recherche** | Instantanée, sans requêtes inutiles |
-| ▶️ **Lecteur** | Lecture directe ou transcodage automatique, pistes audio et sous-titres, qualité, reprise, épisode suivant |
+| ▶️ **Lecteur** | Lecture directe ou transcodage automatique, pistes audio et sous-titres sans perdre la position, qualité, reprise, épisode suivant |
 | ⏭️ **Passer l'intro** | Intro / générique / résumé via les segments du serveur (compatible *Intro Skipper*) |
-| 📺 **Android TV** | Navigation complète à la télécommande, menu latéral, focus bien visible |
+| 📱 **Android TV** | Navigation complète à la télécommande, menu latéral, focus bien visible |
 
 **Sous le capot** : le profil de l'appareil est construit à partir de ses vrais décodeurs (HEVC, VP9, AV1, AC3…) pour ne transcoder que si nécessaire, avec repli automatique si la lecture directe échoue. La progression est renvoyée au serveur.
 
@@ -61,6 +66,8 @@ Réglages → Apparence :
 | **Sunset** | orange |
 | **Rose** | rose / mauve |
 | **Mono** | gris |
+
+**Thème du serveur** : par défaut, Jellyflix reprend le thème de votre serveur Jellyfin — le thème web choisi par l'utilisateur (dark, light, blueradiance, purplehaze, wmc, appletv) et les couleurs du **CSS personnalisé** de l'administrateur (variables comme `--accent` ou `--background`, `@import` compris). Désactivable dans Réglages → Apparence. Le CSS complet n'est pas interprété : seules les couleurs d'accent et de fond sont reprises.
 
 En plus : mode clair / sombre / système, **couleurs dynamiques** (Material You), **noir pur AMOLED**, **accent personnalisé**.
 
@@ -100,9 +107,17 @@ Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis po
 Pour une signature stable (mises à jour sans désinstaller), ajoutez les secrets du dépôt `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD`. Sans eux, l'APK est signé avec la clé de debug.
 </details>
 
+## 🔒 Sécurité
+
+Les jetons de connexion sont **chiffrés** (AES-256-GCM) avec une clé stockée dans l'**Android Keystore**, qui ne quitte pas l'appareil. Les comptes enregistrés par une version précédente sont migrés automatiquement. La sauvegarde Android est désactivée.
+
 ## ⚠️ Limites actuelles
 
-Pas encore de musique, télé en direct, téléchargements hors-ligne ni Chromecast. Les jetons de connexion sont stockés dans le stockage privé de l'app, non chiffrés.
+- **Téléchargements** : le fichier original est téléchargé (le compte doit avoir le droit de téléchargement sur le serveur) ; les sous-titres externes ne sont pas inclus, seuls ceux intégrés à la vidéo fonctionnent hors-ligne. Pas de téléchargement de musique.
+- **Chromecast** : nécessite un téléphone avec les services Google Play et un serveur joignable depuis l'appareil Cast. Le bouton est masqué sur Android TV et si Cast est indisponible.
+- **Télé en direct** : lecture des chaînes et des enregistrements ; pas de programmation d'enregistrements ni de grille horaire complète.
+- **Thème du serveur** : seules les couleurs sont reprises, pas le reste du CSS.
+- Non testé sur appareil physique : à valider sur un téléphone, une TV et un vrai serveur avant diffusion large.
 
 ## 📄 Licence
 

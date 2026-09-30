@@ -37,6 +37,10 @@ data class AppSettings(
     val customAccent: Int? = null,
     val quality: QualityCap = QualityCap.Auto,
     val disabledPlugins: Set<String> = emptySet(),
+    /** Follow the theme defined by the Jellyfin server (web theme + branding CSS). */
+    val downloadWifiOnly: Boolean = true,
+    val useServerTheme: Boolean = true,
+    val serverTheme: ServerTheme = ServerTheme(),
 )
 
 class SettingsRepository(private val context: Context) {
@@ -50,8 +54,15 @@ class SettingsRepository(private val context: Context) {
         val accent = intPreferencesKey("accent")
         val quality = stringPreferencesKey("quality")
         val disabledPlugins = stringSetPreferencesKey("disabled_plugins")
-        val accounts = stringPreferencesKey("accounts")
+        /** Legacy plaintext list (v0.1). Read once for migration, then removed. */
+        val accountsLegacy = stringPreferencesKey("accounts")
+        val accounts = stringPreferencesKey("accounts_enc")
         val current = stringPreferencesKey("current_account")
+        val useServerTheme = booleanPreferencesKey("use_server_theme")
+        val wifiOnly = booleanPreferencesKey("download_wifi_only")
+        val serverAccent = intPreferencesKey("server_accent")
+        val serverBg = intPreferencesKey("server_bg")
+        val serverDark = booleanPreferencesKey("server_dark")
     }
 
     val settings: Flow<AppSettings> = context.store.data.map { p ->
@@ -63,6 +74,9 @@ class SettingsRepository(private val context: Context) {
             customAccent = p[K.accent],
             quality = p[K.quality]?.let { runCatching { QualityCap.valueOf(it) }.getOrNull() } ?: QualityCap.Auto,
             disabledPlugins = p[K.disabledPlugins] ?: emptySet(),
+            downloadWifiOnly = p[K.wifiOnly] ?: true,
+            useServerTheme = p[K.useServerTheme] ?: true,
+            serverTheme = ServerTheme(p[K.serverAccent], p[K.serverBg], p[K.serverDark]),
         )
     }
 
@@ -76,24 +90,42 @@ class SettingsRepository(private val context: Context) {
         fun accent(v: Int?) { if (v == null) p.remove(K.accent) else p[K.accent] = v }
         fun quality(v: QualityCap) { p[K.quality] = v.name }
         fun disabledPlugins(v: Set<String>) { p[K.disabledPlugins] = v }
+        fun useServerTheme(v: Boolean) { p[K.useServerTheme] = v }
+        fun downloadWifiOnly(v: Boolean) { p[K.wifiOnly] = v }
+        fun serverTheme(t: ServerTheme) {
+            t.accent?.let { p[K.serverAccent] = it } ?: p.remove(K.serverAccent)
+            t.background?.let { p[K.serverBg] = it } ?: p.remove(K.serverBg)
+            t.dark?.let { p[K.serverDark] = it } ?: p.remove(K.serverDark)
+        }
     }
 
-    val accounts: Flow<List<Account>> = context.store.data.map { p ->
-        p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList()
+    private fun decode(raw: String?): List<Account>? =
+        raw?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() }
+
+    /** Accounts are stored encrypted; a legacy plaintext list is still read so upgrading users stay signed in. */
+    private fun readAccounts(p: Preferences): List<Account> =
+        decode(p[K.accounts]?.let { SecretBox.decrypt(it) }) ?: decode(p[K.accountsLegacy]) ?: emptyList()
+
+    private fun writeAccounts(p: androidx.datastore.preferences.core.MutablePreferences, list: List<Account>) {
+        p[K.accounts] = SecretBox.encrypt(json.encodeToString(list))
+        p.remove(K.accountsLegacy) // never leave tokens in clear text once migrated
     }
+
+    val accounts: Flow<List<Account>> = context.store.data.map { readAccounts(it) }
     val currentAccountKey: Flow<String?> = context.store.data.map { it[K.current] }
 
     suspend fun saveAccount(account: Account) = context.store.edit { p ->
-        val list = (p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList())
-            .filterNot { it.key == account.key } + account
-        p[K.accounts] = json.encodeToString(list)
+        writeAccounts(p, readAccounts(p).filterNot { it.key == account.key } + account)
         p[K.current] = account.key
     }
 
     suspend fun removeAccount(key: String) = context.store.edit { p ->
-        val list = (p[K.accounts]?.let { runCatching { json.decodeFromString<List<Account>>(it) }.getOrNull() } ?: emptyList())
-            .filterNot { it.key == key }
-        p[K.accounts] = json.encodeToString(list)
+        writeAccounts(p, readAccounts(p).filterNot { it.key == key })
         if (p[K.current] == key) p.remove(K.current)
+    }
+
+    /** Re-encrypts a legacy plaintext list at startup instead of waiting for the next login. */
+    suspend fun migrateLegacyAccounts() = context.store.edit { p ->
+        if (p[K.accountsLegacy] != null) writeAccounts(p, readAccounts(p))
     }
 }

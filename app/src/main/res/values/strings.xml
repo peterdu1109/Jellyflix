@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Jellyflix</string>
+    <string name="app_name" translatable="false">Jellyflix</string>
     <string name="nav_home">Home</string>
     <string name="nav_library">Library</string>
     <string name="nav_search">Search</string>
@@ -64,4 +64,41 @@
     <string name="no_server_plugins">No server plugin information available (requires admin rights).</string>
     <string name="settings_accent_none">Theme default</string>
     <string name="add_account">Add account</string>
+    <string name="settings_server_theme">Use server theme</string>
+    <string name="settings_server_theme_desc">Colors are taken from your Jellyfin server (web theme and custom CSS). Turn off to choose your own.</string>
+    <string name="settings_server_theme_none">This server doesn\'t define a theme, so your own theme is used.</string>
+    <string name="continue_listening">Continue listening</string>
+    <string name="live_tv_now">Live TV</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="download">Download</string>
+    <string name="download_season">Download season</string>
+    <string name="downloaded">Downloaded</string>
+    <string name="downloading">Downloading…</string>
+    <string name="downloads_channel">Downloads</string>
+    <string name="downloads_notification_title">Downloading for offline</string>
+    <string name="downloads_preparing">Preparing…</string>
+    <string name="downloads_empty">Nothing downloaded yet. Open a movie or episode and tap Download.</string>
+    <string name="downloads_storage">%1$s used</string>
+    <string name="downloads_delete_all">Delete all</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume download</string>
+    <string name="download_failed">Failed</string>
+    <string name="download_paused">Paused</string>
+    <string name="download_queued">Waiting</string>
+    <string name="settings_downloads">Downloads</string>
+    <string name="settings_wifi_only">Download on Wi‑Fi only</string>
+    <string name="offline_hint">You seem to be offline. Your downloads are still available.</string>
+    <string name="open_downloads">Open downloads</string>
+    <string name="play_all">Play</string>
+    <string name="shuffle">Shuffle</string>
+    <string name="albums">Albums</string>
+    <string name="artists">Artists</string>
+    <string name="songs">Songs</string>
+    <string name="now_playing">Now playing</string>
+    <string name="queue">Up next</string>
+    <string name="channels">Channels</string>
+    <string name="recordings">Recordings</string>
+    <string name="cast">Cast &amp; crew</string>
+    <string name="filmography">Filmography</string>
+    <string name="casting_to">Casting to %1$s</string>
 </resources>

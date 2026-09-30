@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.jellyflix.R
+import androidx.compose.ui.res.stringResource
 import dev.jellyflix.data.MediaRepository
 import dev.jellyflix.ui.appViewModel
 import dev.jellyflix.ui.components.ItemRow
@@ -36,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemDto
+import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.CollectionType
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.SortOrder
 import java.util.UUID
@@ -55,17 +59,28 @@ class LibrariesViewModel(private val repo: MediaRepository) : ViewModel() {
     private val _state = MutableStateFlow<Load<List<BaseItemDto>>>(Load.Loading)
     val state: StateFlow<Load<List<BaseItemDto>>> = _state
     init { load() }
-    fun load() = viewModelScope.launch {
-        _state.value = Load.Loading
-        _state.value = runCatching { repo.views() }.fold({ Load.Ready(it) }, { Load.Failed(it.message) })
-    }.let { }
+    fun load() {
+        viewModelScope.launch {
+            _state.value = Load.Loading
+            _state.value = runCatching {
+                // Same order and visibility as configured on the server.
+                val layout = repo.userLayout()
+                repo.views().filter { it.id !in layout.hiddenViews }
+                    .sortedBy { v -> layout.orderedViews.indexOf(v.id).let { if (it < 0) Int.MAX_VALUE else it } }
+            }.fold({ Load.Ready(it) }, { Load.Failed(it.message) })
+        }
+    }
 }
+
+enum class LibraryKind { Default, Albums, Artists, Songs }
 
 data class GridState(
     val items: List<BaseItemDto> = emptyList(),
     val total: Int = 0,
     val loading: Boolean = true,
     val error: String? = null,
+    val kind: LibraryKind = LibraryKind.Default,
+    val isMusic: Boolean = false,
     val sort: ItemSortBy = ItemSortBy.SORT_NAME,
     val order: SortOrder = SortOrder.ASCENDING,
 )
@@ -76,7 +91,29 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
     val state: StateFlow<GridState> = _state
     private var generation = 0
 
-    init { reload() }
+    /** Item kinds shown for each library type, so a music library lists albums and a playlist library lists playlists. */
+    private var types: List<BaseItemKind>? = null
+
+    init {
+        viewModelScope.launch {
+            val collection = runCatching { repo.item(parentId).collectionType }.getOrNull()
+            types = typesFor(collection)
+            _state.update { it.copy(isMusic = collection == CollectionType.MUSIC, kind = if (collection == CollectionType.MUSIC) LibraryKind.Albums else LibraryKind.Default) }
+            reload()
+        }
+    }
+
+    private fun typesFor(type: CollectionType?): List<BaseItemKind>? = when (type) {
+        CollectionType.MOVIES -> listOf(BaseItemKind.MOVIE)
+        CollectionType.TVSHOWS -> listOf(BaseItemKind.SERIES)
+        CollectionType.MUSIC -> listOf(BaseItemKind.MUSIC_ALBUM)
+        CollectionType.BOXSETS -> listOf(BaseItemKind.BOX_SET)
+        CollectionType.PLAYLISTS -> listOf(BaseItemKind.PLAYLIST)
+        CollectionType.HOMEVIDEOS, CollectionType.MUSICVIDEOS -> listOf(BaseItemKind.VIDEO, BaseItemKind.MUSIC_VIDEO)
+        else -> null
+    }
+
+    fun setKind(kind: LibraryKind) { _state.update { it.copy(kind = kind) }; reload() }
 
     fun setSort(sort: ItemSortBy, order: SortOrder) { _state.update { it.copy(sort = sort, order = order) }; reload() }
 
@@ -88,7 +125,14 @@ class LibraryViewModel(private val repo: MediaRepository, private val parentId: 
         val gen = generation
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
-            runCatching { repo.browse(parentId, s.sort, s.order, s.items.size) }
+            runCatching {
+                when (s.kind) {
+                    LibraryKind.Artists -> repo.browseArtists(parentId, s.items.size)
+                    LibraryKind.Songs -> repo.browse(parentId, s.sort, s.order, s.items.size, types = listOf(BaseItemKind.AUDIO))
+                    LibraryKind.Albums -> repo.browse(parentId, s.sort, s.order, s.items.size, types = listOf(BaseItemKind.MUSIC_ALBUM))
+                    LibraryKind.Default -> repo.browse(parentId, s.sort, s.order, s.items.size, types = types)
+                }
+            }
                 .onSuccess { page -> if (gen == generation) _state.update { it.copy(items = it.items + page.items, total = page.total, loading = false) } }
                 .onFailure { e -> if (gen == generation) _state.update { it.copy(loading = false, error = e.message) } }
         }
@@ -118,6 +162,14 @@ fun LibraryScreen(parentId: UUID, onOpen: (BaseItemDto) -> Unit) {
             contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
+            if (state.isMusic) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(LibraryKind.entries.filter { it != LibraryKind.Default }.size) { i ->
+                        val k = LibraryKind.entries.filter { it != LibraryKind.Default }[i]
+                        FilterChip(selected = state.kind == k, onClick = { vm.setKind(k) }, label = { Text(when (k) { LibraryKind.Albums -> stringResource(R.string.albums); LibraryKind.Artists -> stringResource(R.string.artists); else -> stringResource(R.string.songs) }) })
+                    }
+                }
+            }
             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                 androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(sorts.size) { i ->

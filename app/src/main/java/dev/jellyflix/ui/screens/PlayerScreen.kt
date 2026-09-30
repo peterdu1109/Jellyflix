@@ -122,16 +122,16 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
     // Pause when the app goes to background.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
-        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_STOP) { player.pause(); vm.reportProgress() } }
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_STOP) { if (ui.castDevice == null) vm.active.pause(); vm.reportProgress() } }
         lifecycle.addObserver(obs); onDispose { lifecycle.removeObserver(obs) }
     }
     LaunchedEffect(Unit) { vm.nextEpisode.collect { onNext(it) } }
     LaunchedEffect(Unit) { focus.requestFocus() }
     LaunchedEffect(Unit) {
         while (true) {
-            isPlaying = player.isPlaying
-            if (!dragging) position = player.currentPosition
-            duration = player.duration.coerceAtLeast(0)
+            isPlaying = vm.active.isPlaying
+            if (!dragging) position = vm.positionMs()
+            duration = vm.durationMs()
             if (controls && isPlaying && System.currentTimeMillis() - lastInteraction > 4000) controls = false
             delay(400)
         }
@@ -144,13 +144,13 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val code = e.key.nativeKeyCode
                 when (code) {
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> if (!controls) { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)); poke(); true } else false
-                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (!controls) { player.seekTo(player.currentPosition + 10_000); poke(); true } else false
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> if (!controls) { vm.seekByMs(-10_000); poke(); true } else false
+                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (!controls) { vm.seekByMs(10_000); poke(); true } else false
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> if (!controls) { poke(); true } else false
                     KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { poke(); false }
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> { if (player.isPlaying) player.pause() else player.play(); poke(); true }
-                    KeyEvent.KEYCODE_MEDIA_PLAY -> { player.play(); true }
-                    KeyEvent.KEYCODE_MEDIA_PAUSE -> { player.pause(); poke(); true }
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> { if (vm.active.isPlaying) vm.active.pause() else vm.active.play(); poke(); true }
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> { vm.active.play(); true }
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> { vm.active.pause(); poke(); true }
                     else -> false
                 }
             }
@@ -160,6 +160,7 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
             factory = { c -> PlayerView(c).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } },
             modifier = Modifier.fillMaxSize(),
         )
+        if (ui.castDevice != null) Text(stringResource(R.string.casting_to, ui.castDevice!!), color = Color.White, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.Center))
         if (ui.loading) CircularProgressIndicator(Modifier.align(Alignment.Center))
         ui.error?.let {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -189,21 +190,22 @@ fun PlayerScreen(itemId: UUID, onBack: () -> Unit, onNext: (UUID) -> Unit) {
                     }
                 }
                 Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton({ player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)); poke() }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Replay10, null, tint = Color.White, modifier = Modifier.size(40.dp)) }
-                    IconButton({ if (isPlaying) player.pause() else player.play(); poke() }, Modifier.size(72.dp).focusRing(androidx.compose.foundation.shape.CircleShape)) {
+                    IconButton({ vm.seekByMs(-10_000); poke() }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Replay10, null, tint = Color.White, modifier = Modifier.size(40.dp)) }
+                    IconButton({ if (isPlaying) vm.active.pause() else vm.active.play(); poke() }, Modifier.size(72.dp).focusRing(androidx.compose.foundation.shape.CircleShape)) {
                         Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(56.dp))
                     }
-                    IconButton({ player.seekTo(player.currentPosition + 10_000); poke() }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Forward10, null, tint = Color.White, modifier = Modifier.size(40.dp)) }
+                    IconButton({ vm.seekByMs(10_000); poke() }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Forward10, null, tint = Color.White, modifier = Modifier.size(40.dp)) }
                 }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
                     Slider(
                         value = if (duration > 0) position.toFloat() / duration else 0f,
                         onValueChange = { dragging = true; position = (it * duration).toLong(); poke() },
-                        onValueChangeFinished = { player.seekTo(position); dragging = false },
+                        onValueChangeFinished = { vm.seekToMs(position); dragging = false },
                         modifier = Modifier.focusRing(),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${fmt(position)} / ${fmt(duration)}", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        if (vm.castAvailable) CastButton()
                         TrackMenu(Icons.Default.AudioFile, stringResource(R.string.audio), ui.audio.map { it.streamIndex to it.label }, ui.audioIndex, null) { vm.selectAudio(it!!); poke() }
                         TrackMenu(Icons.Default.Subtitles, stringResource(R.string.subtitles), ui.subtitles.map { it.streamIndex to it.label }, ui.subtitleIndex, stringResource(R.string.off)) { vm.selectSubtitle(it); poke() }
                         QualityMenu(vm) { poke() }
@@ -249,4 +251,17 @@ private fun fmt(ms: Long): String {
     val s = ms / 1000
     val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+}
+
+/** System Cast button; built defensively because it needs Play services and can fail on unusual devices. */
+@Composable
+private fun CastButton() {
+    AndroidView(
+        factory = { c ->
+            runCatching {
+                androidx.mediarouter.app.MediaRouteButton(c).also { com.google.android.gms.cast.framework.CastButtonFactory.setUpMediaRouteButton(c, it) }
+            }.getOrElse { android.view.View(c) }
+        },
+        modifier = Modifier.size(48.dp),
+    )
 }
