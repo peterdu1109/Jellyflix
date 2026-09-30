@@ -39,7 +39,8 @@ Une nouvelle release est publiée **automatiquement** à chaque nouvelle version
 | | |
 |---|---|
 | 🔐 **Connexion** | Détection de l'adresse (http/https, port), mot de passe, Quick Connect, plusieurs comptes |
-| 🪞 **Fidèle au serveur** | Reprend l'organisation configurée sur Jellyfin : ordre des sections d'accueil, bibliothèques masquées ou réordonnées, thème du serveur, pistes audio et sous-titres par défaut, pastilles « non vus » |
+| 🌐 **Interface du serveur** | Par défaut, l'app affiche **l'interface web de votre Jellyfin elle-même**, connectée automatiquement : même thème, même CSS personnalisé, mêmes plugins (Media Bar, Home Screen Sections, JavaScript Injector…), avec la disposition TV du client web sur Android TV. Bascule vers l'interface native dans Réglages → Interface, ou via le menu (touche Menu de la télécommande, ou Retour à la racine) |
+| 🪞 **Fidèle au serveur** (interface native) | Reprend l'organisation configurée sur Jellyfin : ordre des sections d'accueil, bibliothèques masquées ou réordonnées, thème du serveur, pistes audio et sous-titres par défaut, pastilles « non vus » |
 | 🏠 **Accueil** | Reprendre la lecture / l'écoute, À suivre, Télé en direct, Derniers ajouts par bibliothèque, Favoris |
 | 📚 **Bibliothèques** | Grille paginée, tri, contenu adapté au type (films, séries, musique, playlists, collections) |
 | 🎬 **Fiches** | Films, séries, saisons, épisodes, distribution et filmographie, similaires, vu / favori |
@@ -119,6 +120,7 @@ Les jetons de connexion sont **chiffrés** (AES-256-GCM) avec une clé stockée 
 
 ## ⚠️ Limites actuelles
 
+- **Interface du serveur** : c'est le client web de Jellyfin dans une WebView, la lecture y passe donc par le moteur web (davantage de transcodage qu'avec le lecteur natif). Téléchargements hors-ligne, lecteur de musique en arrière-plan et Chromecast n'existent que dans l'interface native.
 - **Téléchargements** : le fichier original est téléchargé (le compte doit avoir le droit de téléchargement sur le serveur) ; les sous-titres externes ne sont pas inclus, seuls ceux intégrés à la vidéo fonctionnent hors-ligne. Pas de téléchargement de musique.
 - **Chromecast** : nécessite un téléphone avec les services Google Play et un serveur joignable depuis l'appareil Cast. Le bouton est masqué sur Android TV et si Cast est indisponible.
 - **Télé en direct** : lecture des chaînes et des enregistrements ; pas de programmation d'enregistrements ni de grille horaire complète.

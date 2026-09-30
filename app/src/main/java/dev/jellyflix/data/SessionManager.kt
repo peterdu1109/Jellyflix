@@ -99,6 +99,7 @@ class SessionManager(
         val s = current ?: return
         runCatching { s.api.userApi.let { } }
         settings.removeAccount(s.account.key)
+        dev.jellyflix.ui.web.clearWebData()
         val next = settings.accounts.first().firstOrNull()
         _state.value = next?.let { settings.saveAccount(it); AuthState.SignedIn(open(it)) } ?: AuthState.SignedOut
     }

@@ -100,4 +100,11 @@
     <string name="cast">Distribution</string>
     <string name="filmography">Filmographie</string>
     <string name="casting_to">Diffusion vers %1$s</string>
+    <string name="settings_interface">Interface</string>
+    <string name="interface_server">Interface du serveur (web)</string>
+    <string name="interface_native">Jellyflix natif</string>
+    <string name="interface_hint">L\'interface du serveur est l\'interface web de votre Jellyfin elle-même : même thème, CSS personnalisé et plugins (Media Bar…), avec la disposition TV sur Android TV. Les téléchargements, le lecteur de musique et Chromecast n\'existent que dans l\'interface native.</string>
+    <string name="web_reload">Recharger</string>
+    <string name="web_use_native">Utiliser l\'interface native</string>
+    <string name="web_quit">Quitter</string>
 </resources>

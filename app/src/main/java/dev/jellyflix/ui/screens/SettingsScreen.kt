@@ -55,6 +55,18 @@ fun SettingsScreen(settings: AppSettings) {
     val accounts by c.session.accounts.collectAsState()
 
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Header(R.string.settings_interface) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                dev.jellyflix.data.InterfaceMode.entries.forEach { m ->
+                    FilterChip(settings.interfaceMode == m, { update { it.interfaceMode(m) } }, label = {
+                        Text(stringResource(if (m == dev.jellyflix.data.InterfaceMode.Server) R.string.interface_server else R.string.interface_native))
+                    }, modifier = Modifier.focusRing())
+                }
+            }
+            Text(stringResource(R.string.interface_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item { HorizontalDivider() }
         item { Header(R.string.settings_appearance) }
         item {
             SwitchRow(stringResource(R.string.settings_server_theme), settings.useServerTheme) { v ->

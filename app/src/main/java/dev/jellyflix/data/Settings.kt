@@ -19,6 +19,9 @@ private val Context.store: DataStore<Preferences> by preferencesDataStore("jelly
 
 enum class ThemeMode { System, Light, Dark }
 
+/** Server = the server's own web interface (theme, plugins…); Native = Jellyflix's own screens. */
+enum class InterfaceMode { Server, Native }
+
 /** Max streaming quality; [bitrate] in bits/s, null = let the server direct play whenever possible. */
 enum class QualityCap(val bitrate: Int?) {
     Auto(null), P1080(20_000_000), P720(8_000_000), P480(3_000_000)
@@ -38,6 +41,7 @@ data class AppSettings(
     val quality: QualityCap = QualityCap.Auto,
     val disabledPlugins: Set<String> = emptySet(),
     /** Follow the theme defined by the Jellyfin server (web theme + branding CSS). */
+    val interfaceMode: InterfaceMode = InterfaceMode.Server,
     val downloadWifiOnly: Boolean = true,
     val useServerTheme: Boolean = true,
     val serverTheme: ServerTheme = ServerTheme(),
@@ -60,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         val current = stringPreferencesKey("current_account")
         val useServerTheme = booleanPreferencesKey("use_server_theme")
         val wifiOnly = booleanPreferencesKey("download_wifi_only")
+        val interfaceMode = stringPreferencesKey("interface_mode")
         val serverAccent = intPreferencesKey("server_accent")
         val serverBg = intPreferencesKey("server_bg")
         val serverDark = booleanPreferencesKey("server_dark")
@@ -74,6 +79,7 @@ class SettingsRepository(private val context: Context) {
             customAccent = p[K.accent],
             quality = p[K.quality]?.let { runCatching { QualityCap.valueOf(it) }.getOrNull() } ?: QualityCap.Auto,
             disabledPlugins = p[K.disabledPlugins] ?: emptySet(),
+            interfaceMode = p[K.interfaceMode]?.let { runCatching { InterfaceMode.valueOf(it) }.getOrNull() } ?: InterfaceMode.Server,
             downloadWifiOnly = p[K.wifiOnly] ?: true,
             useServerTheme = p[K.useServerTheme] ?: true,
             serverTheme = ServerTheme(p[K.serverAccent], p[K.serverBg], p[K.serverDark]),
@@ -92,6 +98,7 @@ class SettingsRepository(private val context: Context) {
         fun disabledPlugins(v: Set<String>) { p[K.disabledPlugins] = v }
         fun useServerTheme(v: Boolean) { p[K.useServerTheme] = v }
         fun downloadWifiOnly(v: Boolean) { p[K.wifiOnly] = v }
+        fun interfaceMode(v: InterfaceMode) { p[K.interfaceMode] = v.name }
         fun serverTheme(t: ServerTheme) {
             t.accent?.let { p[K.serverAccent] = it } ?: p.remove(K.serverAccent)
             t.background?.let { p[K.serverBg] = it } ?: p.remove(K.serverBg)

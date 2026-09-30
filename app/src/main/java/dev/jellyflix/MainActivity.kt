@@ -15,6 +15,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import dev.jellyflix.data.AppSettings
 import dev.jellyflix.data.AuthState
+import dev.jellyflix.data.InterfaceMode
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import dev.jellyflix.ui.JellyflixNav
 import dev.jellyflix.ui.components.LoadingView
 import dev.jellyflix.ui.screens.LoginScreen
@@ -29,23 +32,33 @@ class MainActivity : ComponentActivity() {
         val isTv = (getSystemService(UI_MODE_SERVICE) as UiModeManager).currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
 
         setContent {
-            val settings by container.settings.settings.collectAsState(initial = AppSettings())
+            val loaded by container.settings.settings.collectAsState(initial = null)
+            val settings = loaded ?: AppSettings()
             val auth by container.session.state.collectAsState()
+            val scope = rememberCoroutineScope()
             CompositionLocalProvider(LocalIsTv provides isTv) {
                 JellyflixTheme(settings) {
                     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        when (val a = auth) {
-                            AuthState.Loading -> LoadingView()
+                        // Wait for the saved settings too, so the wrong interface never flashes on screen.
+                        if (loaded == null || auth is AuthState.Loading) LoadingView()
+                        else when (val a = auth) {
                             AuthState.SignedOut -> LoginScreen()
-                            // Keyed on the account so all screen state resets when switching users.
                             is AuthState.SignedIn -> androidx.compose.runtime.key(a.session.account.key) {
                                 // Re-read the server theme for every account/session so admin changes show up on next launch.
                                 androidx.compose.runtime.LaunchedEffect(a.session.account.key) {
                                     container.serverTheme.sync(container.settings)
                                     container.downloads.syncPositions()
                                 }
-                                JellyflixNav(settings, container.plugins)
+                                if (settings.interfaceMode == InterfaceMode.Server) {
+                                    dev.jellyflix.ui.web.ServerWebScreen(
+                                        session = a.session, isTv = isTv,
+                                        onUseNative = { scope.launch { container.settings.update { it.interfaceMode(InterfaceMode.Native) } } },
+                                        onSignOut = { scope.launch { container.session.signOut() } },
+                                        onQuit = { finish() },
+                                    )
+                                } else JellyflixNav(settings, container.plugins)
                             }
+                            AuthState.Loading -> LoadingView()
                         }
                     }
                 }
