@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +62,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -128,6 +132,7 @@ private fun PlayerContent(vm: PlayerViewModel, onBack: () -> Unit, onNext: (UUID
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var dragging by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1f) }
     var lastInteraction by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val focus = remember { FocusRequester() }
     val poke = { controls = true; lastInteraction = System.currentTimeMillis() }
@@ -196,7 +201,13 @@ private fun PlayerContent(vm: PlayerViewModel, onBack: () -> Unit, onNext: (UUID
                     else -> false
                 }
             }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { if (controls) controls = false else poke() },
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { if (controls) controls = false else poke() },
+                    // Double tap on the left/right half jumps 10 s, like the usual phone players.
+                    onDoubleTap = { o -> vm.seekByMs(if (o.x < size.width / 2) -10_000 else 10_000); poke() },
+                )
+            },
     ) {
         AndroidView(
             factory = { c -> PlayerView(c).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } },
@@ -257,7 +268,16 @@ private fun PlayerContent(vm: PlayerViewModel, onBack: () -> Unit, onNext: (UUID
                         modifier = Modifier.focusRing(),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${fmt(position)} / ${fmt(duration)}", color = Color.White, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text("${fmt(position)} / ${fmt(duration)}", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                            if (duration > position) {
+                                val endsAt = java.time.LocalTime.now().plusSeconds(((duration - position) / 1000 / speed).toLong())
+                                Text(stringResource(R.string.ends_at, java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(endsAt)), color = Color.White.copy(0.7f), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        val chapters = ui.item?.chapters.orEmpty()
+                        if (chapters.size > 1) ChapterMenu(chapters.map { (it.startPositionTicks / 10_000) to (it.name ?: "") }, position) { vm.seekToMs(it); poke() }
+                        SpeedMenu(speed) { speed = it; vm.active.setPlaybackSpeed(it); poke() }
                         if (vm.castAvailable) CastButton()
                         TrackMenu(Icons.Default.AudioFile, stringResource(R.string.audio), ui.audio.map { it.streamIndex to it.label }, ui.audioIndex, null) { vm.selectAudio(it!!); poke() }
                         TrackMenu(Icons.Default.Subtitles, stringResource(R.string.subtitles), ui.subtitles.map { it.streamIndex to it.label }, ui.subtitleIndex, stringResource(R.string.off)) { vm.selectSubtitle(it); poke() }
@@ -294,6 +314,39 @@ private fun QualityMenu(vm: PlayerViewModel, onChange: () -> Unit) {
                 DropdownMenuItem(
                     text = { Text(when (q) { QualityCap.Auto -> stringResource(R.string.auto); QualityCap.P1080 -> "1080p"; QualityCap.P720 -> "720p"; QualityCap.P480 -> "480p" }) },
                     onClick = { vm.changeQuality(q); open = false; onChange() },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedMenu(current: Float, onSelect: (Float) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton({ open = true }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Speed, stringResource(R.string.speed), tint = Color.White) }
+        DropdownMenu(open, { open = false }) {
+            listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { v ->
+                DropdownMenuItem(
+                    text = { Text("${if (v % 1f == 0f) v.toInt().toString() else v.toString()}×", color = if (v == current) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                    onClick = { onSelect(v); open = false },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChapterMenu(chapters: List<Pair<Long, String>>, positionMs: Long, onSeek: (Long) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val currentStart = chapters.lastOrNull { it.first <= positionMs }?.first
+    Box {
+        IconButton({ open = true }, Modifier.focusRing(androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.Bookmarks, stringResource(R.string.chapters), tint = Color.White) }
+        DropdownMenu(open, { open = false }) {
+            chapters.forEachIndexed { i, (start, name) ->
+                DropdownMenuItem(
+                    text = { Text("${fmt(start)}  ${name.ifBlank { "${stringResource(R.string.chapter)} ${i + 1}" }}", color = if (start == currentStart) MaterialTheme.colorScheme.primary else Color.Unspecified) },
+                    onClick = { onSeek(start); open = false },
                 )
             }
         }

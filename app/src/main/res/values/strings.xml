@@ -120,4 +120,8 @@
     <string name="scheduled_recordings">Scheduled recordings</string>
     <string name="record">Record</string>
     <string name="cancel_recording">Cancel recording</string>
+    <string name="ends_at">Ends at %1$s</string>
+    <string name="speed">Speed</string>
+    <string name="chapters">Chapters</string>
+    <string name="chapter">Chapter</string>
 </resources>

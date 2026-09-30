@@ -119,4 +119,8 @@
     <string name="scheduled_recordings">Enregistrements programmés</string>
     <string name="record">Enregistrer</string>
     <string name="cancel_recording">Annuler l\'enregistrement</string>
+    <string name="ends_at">Fin à %1$s</string>
+    <string name="speed">Vitesse</string>
+    <string name="chapters">Chapitres</string>
+    <string name="chapter">Chapitre</string>
 </resources>
