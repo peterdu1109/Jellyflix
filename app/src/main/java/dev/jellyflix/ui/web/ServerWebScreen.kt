@@ -94,6 +94,7 @@ fun ServerWebScreen(
 ) {
     var reloadKey by remember { mutableStateOf(0) }
     var showMenu by remember { mutableStateOf(false) }
+    var showDiagnostics by remember { mutableStateOf(false) }
 
     // The web client identifies the server by its id; the public endpoint needs no authentication.
     var server by remember { mutableStateOf<Load<Pair<String, String>>>(Load.Loading) }
@@ -126,6 +127,7 @@ fun ServerWebScreen(
                 TextButton({ showMenu = false; onToggleNativePlayer(); reloadKey++ }) {
                     Text(stringResource(if (nativePlayer) R.string.web_player_use_browser else R.string.web_player_use_native))
                 }
+                TextButton({ showMenu = false; showDiagnostics = true }) { Text(stringResource(R.string.diagnostics_title)) }
                 TextButton({ showMenu = false; onUseNative() }) { Text(stringResource(R.string.web_use_native)) }
                 TextButton({ showMenu = false; onSignOut() }) { Text(stringResource(R.string.sign_out)) }
                 TextButton({ showMenu = false; onQuit() }) { Text(stringResource(R.string.web_quit)) }
@@ -133,6 +135,8 @@ fun ServerWebScreen(
         },
         confirmButton = { TextButton({ showMenu = false }) { Text(stringResource(R.string.back)) } },
     )
+
+    if (showDiagnostics) dev.jellyflix.ui.components.DiagnosticsDialog { showDiagnostics = false }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
