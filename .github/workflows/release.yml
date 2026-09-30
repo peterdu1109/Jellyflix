@@ -1,8 +1,10 @@
 name: Release
 
-# Publie automatiquement une release GitHub (APK inclus) à chaque push sur main
-# dont la versionName (app/build.gradle.kts) n'a pas encore de release. Pour sortir une
-# nouvelle version : incrémentez versionName / versionCode, puis poussez sur main.
+# Publie automatiquement une release GitHub avec son APK à CHAQUE push sur main.
+#  - Première publication d'une versionName (app/build.gradle.kts)  -> tag vX.Y.Z
+#  - Pushes suivants avec la même versionName                         -> tag vX.Y.Z-build.N
+# Toutes les releases sont "latest" : le lien /releases/latest donne toujours l'APK le plus récent.
+# versionCode augmente à chaque build pour que Android accepte la mise à jour par-dessus l'ancienne.
 on:
   push:
     branches: [main]
@@ -11,37 +13,45 @@ on:
 permissions:
   contents: write
 
+# Une release à la fois, dans l'ordre des pushs.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lire la version
+      - name: Déterminer la version et le tag
         id: v
-        run: |
-          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: La release existe déjà ?
-        id: exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            TAG="v$VERSION-build.${{ github.run_number }}"
+            TITLE="Jellyflix $VERSION (build ${{ github.run_number }})"
+          else
+            TAG="v$VERSION"
+            TITLE="Jellyflix $VERSION"
+          fi
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "title=$TITLE"
+            echo "code=$((100 + ${{ github.run_number }}))"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
-        if: steps.exists.outputs.skip == 'false'
         with:
           distribution: temurin
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
-        if: steps.exists.outputs.skip == 'false'
 
       - name: Clé de signature (optionnelle)
-        if: steps.exists.outputs.skip == 'false'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -60,14 +70,14 @@ jobs:
             echo "::warning title=APK signé avec la clé de debug::Ajoutez les secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS et KEY_PASSWORD pour une signature stable (voir README)."
           fi
 
-      - name: Compiler l'APK
-        if: steps.exists.outputs.skip == 'false'
+      - name: Tests et APK release
+        env:
+          APP_VERSION_CODE: ${{ steps.v.outputs.code }}
         run: |
-          ./gradlew :app:assembleRelease
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "Jellyflix-${{ steps.v.outputs.tag }}.apk"
 
       - name: Vérifier la signature
-        if: steps.exists.outputs.skip == 'false'
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           OUT=$("$APKSIGNER" verify --print-certs "Jellyflix-${{ steps.v.outputs.tag }}.apk")
@@ -86,11 +96,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publier la release
-        if: steps.exists.outputs.skip == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.v.outputs.tag }}
-          name: Jellyflix ${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.v.outputs.title }}
+          make_latest: true
           generate_release_notes: true
           files: Jellyflix-${{ steps.v.outputs.tag }}.apk
           body: |
@@ -101,3 +112,4 @@ jobs:
             4. Lancez Jellyflix, saisissez l'adresse de votre serveur et connectez-vous.
 
             Nécessite Android 8.0+ et un serveur Jellyfin 10.10 ou plus récent.
+            Commit : `${{ github.sha }}`

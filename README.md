@@ -32,7 +32,7 @@ Il reprend l'essentiel de l'app officielle, mais avec un design moderne, des **t
 
 > Prérequis : Android 8.0 ou plus, serveur Jellyfin 10.10 ou plus récent.
 
-Une nouvelle release est publiée **automatiquement** à chaque nouvelle version poussée sur `main`.
+Un APK est publié **automatiquement à chaque push sur `main`** : la page *Releases* (et le lien `releases/latest`) donne toujours le plus récent. Chaque pull request obtient aussi un APK de test, dont le lien est posté en commentaire.
 
 ## ✨ Fonctionnalités
 
@@ -103,7 +103,12 @@ Kotlin, Jetpack Compose, Media3, Coil, SDK officiel `org.jellyfin.sdk`, DataStor
 <details>
 <summary><b>Publier une nouvelle version et signer l'APK</b></summary>
 
-Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis poussez sur `main` : le workflow *Release* compile l'APK, vérifie sa signature et crée la release `vX.Y.Z` avec ses notes.
+Poussez sur `main` : le workflow *Release* lance les tests, compile l'APK, vérifie sa signature et crée la release, sans rien d'autre à faire.
+
+- Première publication d'une `versionName` (dans `app/build.gradle.kts`) : tag `vX.Y.Z`.
+- Pushes suivants avec la même `versionName` : tag `vX.Y.Z-build.N`. Le `versionCode` augmente à chaque build, donc chaque APK s'installe par-dessus le précédent (avec la signature stable).
+- Pour une nouvelle version « officielle », changez seulement `versionName`.
+- APK de test des PR : identifiant `dev.jellyflix.debug`, il s'installe à côté de la version publiée.
 
 **Signature stable** (pour que les mises à jour s'installent par-dessus sans désinstaller) :
 
