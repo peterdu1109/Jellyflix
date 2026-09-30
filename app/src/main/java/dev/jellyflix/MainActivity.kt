@@ -52,6 +52,9 @@ class MainActivity : ComponentActivity() {
                                 if (settings.interfaceMode == InterfaceMode.Server) {
                                     dev.jellyflix.ui.web.ServerWebScreen(
                                         session = a.session, isTv = isTv,
+                                        nativePlayer = settings.nativePlayer,
+                                        accent = settings.serverTheme.accent,
+                                        onToggleNativePlayer = { scope.launch { container.settings.update { it.nativePlayer(!settings.nativePlayer) } } },
                                         onUseNative = { scope.launch { container.settings.update { it.interfaceMode(InterfaceMode.Native) } } },
                                         onSignOut = { scope.launch { container.session.signOut() } },
                                         onQuit = { finish() },

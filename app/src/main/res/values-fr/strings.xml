@@ -107,4 +107,10 @@
     <string name="web_reload">Recharger</string>
     <string name="web_use_native">Utiliser l\'interface native</string>
     <string name="web_quit">Quitter</string>
+    <string name="web_player_use_browser">Lecteur vidéo : passer au lecteur du navigateur</string>
+    <string name="web_player_use_native">Lecteur vidéo : passer au lecteur de l\'appareil</string>
+    <string name="settings_video_player">Lecteur vidéo</string>
+    <string name="video_player_native">Lecteur de l\'appareil (décodage matériel)</string>
+    <string name="video_player_browser">Lecteur du navigateur</string>
+    <string name="video_player_hint">Le lecteur de l\'appareil utilise les décodeurs de votre TV ou téléphone quand ils savent lire la vidéo, et ne demande au serveur de la convertir que s\'ils ne le peuvent pas.</string>
 </resources>

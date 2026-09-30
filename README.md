@@ -125,7 +125,9 @@ Les jetons de connexion sont **chiffrés** (AES-256-GCM) avec une clé stockée 
 
 ## ⚠️ Limites actuelles
 
-- **Interface du serveur** : c'est le client web de Jellyfin dans une WebView, la lecture y passe donc par le moteur web (davantage de transcodage qu'avec le lecteur natif). Téléchargements hors-ligne, lecteur de musique en arrière-plan et Chromecast n'existent que dans l'interface native.
+- **Interface du serveur** : c'est le client web de Jellyfin dans une WebView. La vidéo est lue par le **décodeur de l'appareil** (ExoPlayer, décodage matériel) quand le profil de l'appareil le permet ; sinon le serveur transcode, et l'app bascule automatiquement sur le transcodage si la lecture directe échoue. Réglable dans Réglages (« Lecteur vidéo » : appareil / web). Dans ce mode la vidéo s'affiche dans le lecteur de l'app (pas l'OSD web) ; le client web continue de gérer la progression et le serveur. Téléchargements hors-ligne, musique en arrière-plan et Chromecast restent propres à l'interface native.
+- **Navigation à la télécommande** : cadre de focus net et contrasté sur Android TV. Le temps de réponse de l'interface web dépend surtout du client web lui-même : des essais de CSS d'optimisation n'ont pas donné de gain mesurable et n'ont donc pas été livrés.
+- **Aperçu de la barre de lecture** : les planches de vignettes (*trickplay*) sont préchargées en tâche de fond, les plus proches de la position en premier, pour un aperçu instantané (web et lecteur natif). Nécessite que le serveur ait généré les vignettes.
 - **Téléchargements** : le fichier original est téléchargé (le compte doit avoir le droit de téléchargement sur le serveur) ; les sous-titres externes ne sont pas inclus, seuls ceux intégrés à la vidéo fonctionnent hors-ligne. Pas de téléchargement de musique.
 - **Chromecast** : nécessite un téléphone avec les services Google Play et un serveur joignable depuis l'appareil Cast. Le bouton est masqué sur Android TV et si Cast est indisponible.
 - **Télé en direct** : lecture des chaînes et des enregistrements ; pas de programmation d'enregistrements ni de grille horaire complète.

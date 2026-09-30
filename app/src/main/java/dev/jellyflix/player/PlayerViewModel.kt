@@ -49,6 +49,36 @@ import org.jellyfin.sdk.model.api.PlaybackStopInfo
 import org.jellyfin.sdk.model.api.SubtitleDeliveryMethod
 import java.util.UUID
 
+/**
+ * A stream the Jellyfin web client already chose (hardware profile -> direct play or server transcode): the app only
+ * has to render it. [serial] changes on every play() so a restart (new audio track, forced transcode…) gets a fresh player.
+ */
+data class ExternalStream(
+    val serial: Int,
+    val itemId: UUID,
+    val url: String,
+    val playMethod: PlayMethod,
+    val startTicks: Long,
+    val playSessionId: String?,
+    val liveStreamId: String?,
+    val mediaSource: MediaSourceInfo,
+    val audioIndex: Int?,
+    /** -1 or null = subtitles off. */
+    val subtitleIndex: Int?,
+)
+
+/** What the player tells the web client, which keeps doing all server reporting and queueing. */
+interface PlayerEvents {
+    fun started()
+    fun time(positionMs: Long, durationMs: Long, paused: Boolean)
+    fun ended()
+    fun userStop(positionMs: Long)
+    fun error(type: String)
+    fun selectAudio(index: Int)
+    fun selectSubtitle(index: Int)
+    fun selectBitrate(bitrate: Int?)
+}
+
 data class Segment(val type: MediaSegmentType, val startMs: Long, val endMs: Long)
 data class TrackOption(val streamIndex: Int, val label: String)
 
@@ -70,7 +100,11 @@ class PlayerViewModel(
     private val app: Application,
     private val container: AppContainer,
     private val itemId: UUID,
+    private val external: ExternalStream? = null,
+    private val events: PlayerEvents? = null,
 ) : ViewModel() {
+    /** Server reporting, queueing and retries belong to the web client in this mode. */
+    private val isExternal = external != null
     private val session get() = container.session.current ?: error("Not signed in")
     private val api get() = session.api
 
@@ -110,6 +144,12 @@ class PlayerViewModel(
     init {
         val sharedListener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                if (isExternal) {
+                    // The web client answers with a forced server transcode and a new play().
+                    _ui.update { it.copy(loading = true) }
+                    events?.error("mediadecodeerror")
+                    return
+                }
                 // A direct play failure (unsupported codec…) falls back to server transcoding once.
                 if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY && !forcedTranscode && !isLocal) {
                     forcedTranscode = true
@@ -117,9 +157,13 @@ class PlayerViewModel(
                 } else _ui.update { it.copy(loading = false, error = error.message ?: error.errorCodeName) }
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) { resolveStartOffset(); _ui.update { it.copy(loading = false) } }
+                if (state == Player.STATE_READY) {
+                    resolveStartOffset(); _ui.update { it.copy(loading = false) }
+                    if (isExternal && !startedSent) { startedSent = true; events?.started() }
+                }
                 if (state == Player.STATE_ENDED) onEnded()
             }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (isExternal) pushTime() }
             override fun onTracksChanged(tracks: Tracks) { /* selection is driven by the user; nothing to sync */ }
         }
         player.addListener(sharedListener)
@@ -131,6 +175,7 @@ class PlayerViewModel(
     }
 
     private var forcedTranscode = false
+    private var startedSent = false
 
     /** Cast needs Google Play services and a phone/tablet; anything missing simply hides the cast button. */
     @Suppress("DEPRECATION")
@@ -210,6 +255,7 @@ class PlayerViewModel(
 
     private suspend fun start() {
         runCatching {
+            if (external != null) { startExternal(external); return@runCatching }
             container.downloads.playable(itemId)?.let { startLocal(it); return@runCatching }
             val item = container.repository.item(itemId)
             _ui.update { it.copy(item = item) }
@@ -222,6 +268,59 @@ class PlayerViewModel(
             startLoop()
         }.onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
     }
+
+    /** Renders the stream the web client picked. Everything server-side (reporting, retries, next item) stays with it. */
+    private suspend fun startExternal(ext: ExternalStream) {
+        val src = ext.mediaSource
+        source = src
+        playSessionId = ext.playSessionId
+        liveStreamId = ext.liveStreamId
+        val item = runCatching { container.repository.item(ext.itemId) }.getOrNull()
+        _ui.update { it.copy(item = item) }
+        runtimeMs = (src.runTimeTicks ?: item?.runTimeTicks ?: 0L) / 10_000
+        val method = ext.playMethod
+
+        val streams = src.mediaStreams.orEmpty()
+        val audio = streams.filter { it.type == MediaStreamType.AUDIO }
+        val subs = streams.filter { it.type == MediaStreamType.SUBTITLE }
+        val chosenAudio = ext.audioIndex ?: src.defaultAudioStreamIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
+        val chosenSub = ext.subtitleIndex?.takeIf { it >= 0 }
+        val base = session.account.serverUrl.trimEnd('/')
+
+        _ui.update {
+            it.copy(
+                audio = audio.map { s -> TrackOption(s.index, s.label()) },
+                subtitles = subs.map { s -> TrackOption(s.index, s.label()) },
+                audioIndex = chosenAudio, subtitleIndex = chosenSub, playMethod = method,
+            )
+        }
+        streamOffsetMs = 0
+        pendingStartMs = null
+        val mediaItem = MediaItem.Builder().setUri(ext.url).setMediaId(ext.itemId.toString())
+            .setSubtitleConfigurations(if (method == PlayMethod.DIRECT_PLAY) sidecarSubtitles(base, subs) else emptyList()).build()
+        val startMs = ext.startTicks / 10_000
+        if (method == PlayMethod.DIRECT_PLAY) player.setMediaItem(mediaItem, startMs.coerceAtLeast(0))
+        else { player.setMediaItem(mediaItem); if (startMs > 0) pendingStartMs = startMs }
+        player.prepare()
+        player.playWhenReady = true
+        if (method == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(chosenAudio, chosenSub)
+        if (container.plugins.segmentSkip(settings)) loadSegments()
+        startLoop()
+    }
+
+    /** Text subtitles the server exposes as separate files; the web client may already have made the URLs absolute. */
+    private fun sidecarSubtitles(base: String, subs: List<MediaStream>): List<MediaItem.SubtitleConfiguration> =
+        subs.filter { it.deliveryMethod == SubtitleDeliveryMethod.EXTERNAL && it.deliveryUrl != null }.map { s ->
+            val url = s.deliveryUrl!!
+            val mime = when {
+                url.contains(".vtt", true) || s.codec.equals("webvtt", true) -> MimeTypes.TEXT_VTT
+                url.contains(".ass", true) || url.contains(".ssa", true) -> MimeTypes.TEXT_SSA
+                else -> MimeTypes.APPLICATION_SUBRIP
+            }
+            MediaItem.SubtitleConfiguration.Builder(Uri.parse(if (url.startsWith("http", true)) url else base + url))
+                .setId("ext${s.index}").setMimeType(mime).setLanguage(s.language).setLabel(s.label())
+                .setSelectionFlags(0).build()
+        }
 
     /** Plays the downloaded file. Works fully offline: metadata comes from the entry saved with the file. */
     private fun startLocal(entry: dev.jellyflix.download.DownloadEntry) {
@@ -318,17 +417,7 @@ class PlayerViewModel(
         val chosenAudio = audioIndex ?: src.defaultAudioStreamIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
         val chosenSub = wantedSub
 
-        val externalSubs = (if (method != PlayMethod.DIRECT_PLAY) emptyList() else subs.filter { it.deliveryMethod == SubtitleDeliveryMethod.EXTERNAL && it.deliveryUrl != null })
-            .map { s ->
-                val mime = when {
-                    s.deliveryUrl!!.contains(".vtt", true) || s.codec.equals("webvtt", true) -> MimeTypes.TEXT_VTT
-                    s.deliveryUrl!!.contains(".ass", true) || s.deliveryUrl!!.contains(".ssa", true) -> MimeTypes.TEXT_SSA
-                    else -> MimeTypes.APPLICATION_SUBRIP
-                }
-                MediaItem.SubtitleConfiguration.Builder(Uri.parse(base + s.deliveryUrl))
-                    .setId("ext${s.index}").setMimeType(mime).setLanguage(s.language).setLabel(s.label())
-                    .setSelectionFlags(0).build()
-            }
+        val externalSubs = if (method != PlayMethod.DIRECT_PLAY) emptyList() else sidecarSubtitles(base, subs)
 
         _ui.update {
             it.copy(
@@ -368,13 +457,23 @@ class PlayerViewModel(
     }
 
     /** Absolute position in the media, regardless of how the stream's own timeline starts. */
+    /** Seek-preview thumbnails; null for downloads or items without trickplay data. */
+    val trickplay: Trickplay? by lazy {
+        val item = _ui.value.item ?: return@lazy null
+        if (isLocal) return@lazy null
+        val info = Trickplay.pick(item.trickplay, source?.id ?: external?.mediaSource?.id) ?: return@lazy null
+        Trickplay(session.account.serverUrl.trimEnd('/'), session.account.token, itemId.toString(), source?.id ?: external?.mediaSource?.id ?: itemId.toString().replace("-", ""), info)
+    }
+
     fun positionMs(): Long = streamOffsetMs + active.currentPosition
     fun durationMs(): Long = if (runtimeMs > 0) runtimeMs else active.duration.coerceAtLeast(0)
 
     fun seekToMs(ms: Long) {
         val target = ms.coerceIn(0, durationMs().takeIf { it > 0 } ?: Long.MAX_VALUE)
         val rel = target - streamOffsetMs
-        if (rel >= 0) active.seekTo(rel) else reload(target, _ui.value.audioIndex, _ui.value.subtitleIndex)
+        if (rel >= 0) active.seekTo(rel)
+        else if (isExternal) active.seekTo(0)
+        else reload(target, _ui.value.audioIndex, _ui.value.subtitleIndex)
     }
 
     fun seekByMs(delta: Long) = seekToMs(positionMs() + delta)
@@ -421,6 +520,7 @@ class PlayerViewModel(
 
     /** Direct play: instant client-side switch. Any server stream: reload at the current position with the new track. */
     fun selectAudio(index: Int) {
+        if (isExternal) { events?.selectAudio(index); return } // the web client decides: switch locally or restart the stream
         val sub = _ui.value.subtitleIndex
         _ui.update { it.copy(audioIndex = index) }
         if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(index, sub)
@@ -428,6 +528,7 @@ class PlayerViewModel(
     }
 
     fun selectSubtitle(index: Int?) {
+        if (isExternal) { events?.selectSubtitle(index ?: -1); return }
         val audio = _ui.value.audioIndex
         val stream = source?.mediaStreams.orEmpty().firstOrNull { it.index == index }
         _ui.update { it.copy(subtitleIndex = index) }
@@ -437,7 +538,29 @@ class PlayerViewModel(
         else reload(positionMs(), audio, index)
     }
 
+    // ---- commands coming back from the web client (external mode) ----
+
+    /** Direct play switches the track instantly; for a server stream the web client restarts it with a new play(). */
+    fun applyAudio(index: Int) {
+        _ui.update { it.copy(audioIndex = index) }
+        if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(index, _ui.value.subtitleIndex)
+    }
+
+    fun applySubtitle(index: Int) {
+        val sub = index.takeIf { it >= 0 }
+        _ui.update { it.copy(subtitleIndex = sub) }
+        if (_ui.value.playMethod == PlayMethod.DIRECT_PLAY) applyClientTrackSelection(_ui.value.audioIndex, sub)
+    }
+
+    fun setPaused(paused: Boolean) { if (paused) player.pause() else player.play() }
+
+    /** The viewer left the app's player: tell the web client, which then stops and reports the position. */
+    fun exitExternal() { events?.userStop(positionMs()) }
+
+    private fun pushTime() { events?.time(positionMs(), durationMs(), !active.isPlaying) }
+
     fun changeQuality(cap: dev.jellyflix.data.QualityCap) {
+        if (isExternal) { events?.selectBitrate(cap.bitrate); return }
         settings = settings.copy(quality = cap)
         forcedTranscode = cap.bitrate != null
         reload(positionMs(), _ui.value.audioIndex, _ui.value.subtitleIndex)
@@ -457,8 +580,10 @@ class PlayerViewModel(
         loopJob?.cancel()
         loopJob = viewModelScope.launch {
             var sinceReport = 0
+            var tick = 0
             while (isActive) {
                 delay(500)
+                if (isExternal && ++tick % 2 == 0) pushTime() // the web client needs a position about every second
                 val pos = positionMs()
                 val seg = segments.firstOrNull { it.type != MediaSegmentType.UNKNOWN && pos >= it.startMs && pos < it.endMs - 1000 }
                 if (seg != _ui.value.activeSegment) _ui.update { it.copy(activeSegment = seg) }
@@ -468,6 +593,7 @@ class PlayerViewModel(
     }
 
     private fun onEnded() {
+        if (isExternal) { events?.ended(); return } // the web client reports the stop and plays the next item itself
         viewModelScope.launch {
             reportStopped()
             val item = _ui.value.item
@@ -483,6 +609,7 @@ class PlayerViewModel(
     private fun ticks() = positionMs() * 10_000
 
     private suspend fun reportStart() = runCatching {
+        if (isExternal) return@runCatching
         api.playStateApi.reportPlaybackStart(PlaybackStartInfo(
             itemId = itemId, canSeek = true, isPaused = false, isMuted = false, positionTicks = ticks(),
             playMethod = _ui.value.playMethod, playSessionId = playSessionId, mediaSourceId = source?.id,
@@ -492,6 +619,7 @@ class PlayerViewModel(
     }
 
     fun reportProgress() {
+        if (isExternal) return
         if (isLocal) container.downloads.savePosition(itemId, ticks())
         viewModelScope.launch {
             runCatching {
@@ -506,7 +634,7 @@ class PlayerViewModel(
     }
 
     private suspend fun reportStopped() {
-        if (stopped) return
+        if (stopped || isExternal) return
         stopped = true
         runCatching {
             api.playStateApi.reportPlaybackStopped(PlaybackStopInfo(
@@ -520,8 +648,8 @@ class PlayerViewModel(
         val ticks = ticks()
         if (isLocal) container.downloads.savePosition(itemId, ticks)
         // viewModelScope is already cancelled here, so report on the application scope.
-        liveStreamId?.let { id -> container.appScope.launch { runCatching { api.mediaInfoApi.closeLiveStream(id) } } }
-        if (!stopped) container.appScope.launch {
+        if (!isExternal) liveStreamId?.let { id -> container.appScope.launch { runCatching { api.mediaInfoApi.closeLiveStream(id) } } }
+        if (!stopped && !isExternal) container.appScope.launch {
             runCatching {
                 api.playStateApi.reportPlaybackStopped(PlaybackStopInfo(itemId = itemId, positionTicks = ticks, playSessionId = playSessionId, mediaSourceId = source?.id, failed = false))
             }
