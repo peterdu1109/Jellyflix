@@ -44,15 +44,20 @@ jobs:
         if: steps.exists.outputs.skip == 'false'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
-            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
+            {
+              echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks"
+              echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "KEY_ALIAS=$KEY_ALIAS"
+              echo "KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
           else
-            echo "Aucun secret de signature : l'APK sera signé avec la clé de debug."
+            echo "::warning title=APK signé avec la clé de debug::Ajoutez les secrets KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS et KEY_PASSWORD pour une signature stable (voir README)."
           fi
 
       - name: Compiler l'APK
@@ -60,6 +65,25 @@ jobs:
         run: |
           ./gradlew :app:assembleRelease
           cp app/build/outputs/apk/release/app-release.apk "Jellyflix-${{ steps.v.outputs.tag }}.apk"
+
+      - name: Vérifier la signature
+        if: steps.exists.outputs.skip == 'false'
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          OUT=$("$APKSIGNER" verify --print-certs "Jellyflix-${{ steps.v.outputs.tag }}.apk")
+          echo "$OUT"
+          SHA=$(echo "$OUT" | grep -m1 'SHA-256 digest' | sed 's/.*: //')
+          {
+            echo "### Signature de l'APK"
+            echo "Empreinte SHA-256 du certificat : \`$SHA\`"
+            if [ -z "${KEYSTORE_PATH:-}" ]; then
+              echo
+              echo "⚠️ Signé avec la clé de debug : chaque build a une signature différente, les mises à jour exigent de désinstaller l'ancienne version. Configurez les secrets de signature."
+            else
+              echo
+              echo "✅ Clé de signature stable : les mises à jour s'installent par-dessus la version précédente."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publier la release
         if: steps.exists.outputs.skip == 'false'

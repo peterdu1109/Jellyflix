@@ -8,3 +8,6 @@ build/
 .cxx
 *.apk
 *.aab
+*.jks
+*.keystore
+jellyflix-signing-secrets.txt

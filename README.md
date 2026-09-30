@@ -100,11 +100,17 @@ Kotlin, Jetpack Compose, Media3, Coil, SDK officiel `org.jellyfin.sdk`, DataStor
 </details>
 
 <details>
-<summary><b>Publier une nouvelle version</b></summary>
+<summary><b>Publier une nouvelle version et signer l'APK</b></summary>
 
-Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis poussez sur `main` : le workflow *Release* compile l'APK et crée la release `vX.Y.Z` avec ses notes.
+Incrémentez `versionName` et `versionCode` dans `app/build.gradle.kts`, puis poussez sur `main` : le workflow *Release* compile l'APK, vérifie sa signature et crée la release `vX.Y.Z` avec ses notes.
 
-Pour une signature stable (mises à jour sans désinstaller), ajoutez les secrets du dépôt `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD`. Sans eux, l'APK est signé avec la clé de debug.
+**Signature stable** (pour que les mises à jour s'installent par-dessus sans désinstaller) :
+
+1. Générez la clé : `scripts/create-keystore.sh` (ou utilisez la vôtre).
+2. Dans le dépôt GitHub : *Settings → Secrets and variables → Actions*, créez `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` et `KEY_PASSWORD` avec les valeurs générées.
+3. Sauvegardez la clé : si elle est perdue, plus aucune mise à jour ne pourra s'installer sur les versions déjà signées avec elle.
+
+Le résumé de chaque release affiche l'empreinte du certificat et indique si la clé stable a bien été utilisée. Sans secrets, l'APK est signé avec la clé de debug (les mises à jour exigent alors de désinstaller l'ancienne version).
 </details>
 
 ## 🔒 Sécurité
