@@ -116,4 +116,8 @@
     <string name="video_player_hint">The device player uses your TV or phone\'s own decoders when they can read the video, and asks the server to convert it only when they can\'t.</string>
     <string name="diagnostics_title">Device diagnostics</string>
     <string name="diagnostics_copy">Copy</string>
+    <string name="live_tv_guide">Guide</string>
+    <string name="scheduled_recordings">Scheduled recordings</string>
+    <string name="record">Record</string>
+    <string name="cancel_recording">Cancel recording</string>
 </resources>

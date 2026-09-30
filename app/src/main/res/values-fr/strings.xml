@@ -115,4 +115,8 @@
     <string name="video_player_hint">Le lecteur de l\'appareil utilise les décodeurs de votre TV ou téléphone quand ils savent lire la vidéo, et ne demande au serveur de la convertir que s\'ils ne le peuvent pas.</string>
     <string name="diagnostics_title">Diagnostic de l\'appareil</string>
     <string name="diagnostics_copy">Copier</string>
+    <string name="live_tv_guide">Guide</string>
+    <string name="scheduled_recordings">Enregistrements programmés</string>
+    <string name="record">Enregistrer</string>
+    <string name="cancel_recording">Annuler l\'enregistrement</string>
 </resources>

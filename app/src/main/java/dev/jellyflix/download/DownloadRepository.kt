@@ -101,11 +101,12 @@ class DownloadRepository(
 
     fun enqueue(items: List<BaseItemDto>) {
         val account = sessions.current?.account?.key ?: return
-        val added = items.filter { it.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO) }
+        val added = items.filter { it.type in setOf(BaseItemKind.MOVIE, BaseItemKind.EPISODE, BaseItemKind.VIDEO, BaseItemKind.AUDIO) }
             .filter { _entries.value[it.id.toString()]?.status.let { s -> s == null || s == DownloadStatus.FAILED } }
         if (added.isEmpty()) return
         added.forEach { item ->
-            val ext = item.mediaSources?.firstOrNull()?.container?.takeIf { it.isNotBlank() && it.all(Char::isLetterOrDigit) } ?: "mkv"
+            val ext = (item.mediaSources?.firstOrNull()?.container ?: item.container)?.takeIf { it.isNotBlank() && it.all(Char::isLetterOrDigit) }
+                ?: if (item.type == BaseItemKind.AUDIO) "mp3" else "mkv"
             val entry = DownloadEntry(item.id.toString(), account, item, "video.$ext",
                 totalBytes = item.mediaSources?.firstOrNull()?.size ?: 0)
             _entries.update { it + (entry.id to entry) }
