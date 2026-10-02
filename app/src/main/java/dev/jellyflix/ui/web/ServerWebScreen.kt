@@ -156,8 +156,17 @@ private fun WebHost(
         val root = FrameLayout(ctx)
         val web = ServerWebView(ctx)
         val overlay = FrameLayout(ctx).apply { visibility = View.GONE; setBackgroundColor(android.graphics.Color.BLACK) }
-        root.addView(web, FrameLayout.LayoutParams(-1, -1))
+        val webParams = FrameLayout.LayoutParams(-1, -1)
+        root.addView(web, webParams)
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        // The app draws edge to edge: keep the page out of the status bar, gesture bar and camera cutout so its
+        // header icons stay reachable. Fullscreen video (the overlay) still covers the whole screen.
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            webParams.setMargins(bars.left, bars.top, bars.right, bars.bottom)
+            web.layoutParams = webParams
+            insets
+        }
         Triple(root, web, overlay)
     }
     val (root, web, overlay) = holder
