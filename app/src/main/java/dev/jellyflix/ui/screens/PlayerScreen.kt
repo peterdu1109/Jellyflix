@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -234,8 +237,8 @@ private fun PlayerContent(vm: PlayerViewModel, onBack: () -> Unit, onNext: (UUID
         }
 
         if (controls && ui.error == null) {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(0.7f), Color.Transparent, Color.Transparent, Color.Black.copy(0.8f))))) {
-                Row(Modifier.align(Alignment.TopStart).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(0.7f), Color.Transparent, Color.Transparent, Color.Black.copy(0.8f)))).windowInsetsPadding(WindowInsets.safeDrawing)) {
+                Row(Modifier.align(Alignment.TopStart).padding(start = 12.dp, end = 12.dp, top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onBack, Modifier.focusRing()) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = Color.White) }
                     Column(Modifier.padding(start = 8.dp)) {
                         Text(ui.item?.let { dev.jellyflix.ui.components.cardTitle(it) }.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleMedium)
